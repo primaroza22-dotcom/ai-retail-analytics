@@ -56,7 +56,7 @@ def test_packages_are_importable() -> None:
 
 def test_env_example_uses_empty_placeholders() -> None:
     text = (ROOT / ".env.example").read_text(encoding="utf-8")
-    for key in ("DATABASE_URL", "CAMERA_RTSP_URL"):
+    for key in ("DATABASE_URL", "CAMERA_RTSP_URL", "DEEPSEEK_API_KEY"):
         assert f"{key}=" in text, f"{key} must appear as an empty placeholder"
         assert f"{key}=http" not in text
         assert f"{key}=postgres" not in text

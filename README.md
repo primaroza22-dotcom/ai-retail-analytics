@@ -1,23 +1,30 @@
-# AI Retail Analytics Platform
+# AI Retail Analytics Platform (ARAP)
 
-## Tujuan
+## 1. Project Overview
 
-Sistem computer vision untuk retail/coffee shop yang menggunakan CCTV existing untuk menghasilkan operational analytics.
+ARAP is a computer vision platform that analyzes existing CCTV / IP camera
+feeds to produce operational analytics for retail and coffee-shop
+environments: person detection, multi-object tracking, customer counting,
+dwell time, zone occupancy, entry/exit counting, staff activity analytics,
+and more.
 
-## Roadmap
+## 2. Project Goals
 
-```text
-Sprint 1  Foundation
-Sprint 2  CCTV / RTSP
-Sprint 3  YOLO Detection
-Sprint 4  Object Tracking
-Sprint 5  Zone + Dwell Time
-Sprint 6  FastAPI + PostgreSQL
-Sprint 7  Next.js Dashboard
-Sprint 8  Advanced Analytics
-```
+- Reuse existing CCTV infrastructure (RTSP / ONVIF) as the input source.
+- Provide real-time and historical operational analytics.
+- Keep the system modular: camera input, detection, tracking, zones,
+  analytics, storage, and dashboard remain separate components.
+- Deliver a real-time dashboard backed by FastAPI, PostgreSQL, and WebSocket.
 
-## Architecture
+## 3. Current Development Stage
+
+**Sprint 1 — Foundation** (current). Only the project scaffold, Python
+environment, configuration, and basic tests are in place.
+
+> The full video/AI pipeline is **NOT** implemented yet. It will be built in
+> later sprints.
+
+## 4. Architecture
 
 ```text
 CCTV
@@ -39,32 +46,85 @@ PostgreSQL
 Next.js Dashboard
 ```
 
-> Sprint 1 belum mengimplementasikan pipeline di atas. Sprint 1 hanya menyiapkan
-> fondasi proyek: struktur direktori, environment Python, konfigurasi, dan
-> pengujian dasar.
+## 5. Roadmap
 
-## Status Saat Ini (Sprint 1 — Foundation)
+```text
+Sprint 1  Foundation
+Sprint 2  CCTV / RTSP
+Sprint 3  YOLO Detection
+Sprint 4  Object Tracking
+Sprint 5  Zone + Dwell Time
+Sprint 6  FastAPI + PostgreSQL
+Sprint 7  Next.js Dashboard
+Sprint 8  Advanced Analytics + POS Integration
+```
 
-- Struktur proyek modular (`ai/`, `backend/`, `frontend/`, dll.)
-- Virtual environment Python 3.11 (`uv venv .venv`)
-- `pyproject.toml` modern dengan konfigurasi `pytest`
-- `requirements.txt` minimal (belum ada dependency AI)
-- `.env.example` dan `.gitignore`
-- Aturan agent (`AGENTS.md`)
-- Pengujian dasar (`tests/test_project.py`)
+## 6. Project Structure
 
-## Setup Development
+```text
+ai-retail-analytics/
+├── ai/            # computer vision package
+├── backend/       # FastAPI application (future)
+├── frontend/      # Next.js dashboard (future)
+├── config/        # configuration files
+├── data/          # local data (git-ignored content)
+├── models/        # AI model weights (git-ignored)
+├── recordings/    # camera recordings (git-ignored)
+├── scripts/       # utility scripts
+├── tests/         # test suite
+├── docker/        # Docker files (future)
+├── docs/          # documentation
+├── .env.example
+├── .gitignore
+├── AGENTS.md
+├── README.md
+├── pyproject.toml
+└── requirements.txt
+```
+
+## 7. Development Environment
+
+- Windows 11 / VS Code / PowerShell
+- Python 3.11+
+- Node.js 22+ / npm
+- Git
+- Docker (used from later sprints)
+- PostgreSQL 17 (used from Sprint 6)
+
+## 8. Installation
 
 ```powershell
-# Buat virtual environment (Python 3.11)
+# Create the virtual environment (Python 3.11)
 uv venv .venv --python 3.11
 
-# Aktifkan
+# Activate it
 .venv\Scripts\Activate.ps1
 
 # Install test dependencies
 uv pip install -e ".[test]"
-
-# Jalankan test
-uv run pytest
 ```
+
+> The global `pip` on the development machine is broken (points to an older
+> Python). Always install project dependencies through `.venv` using `uv`.
+
+## 9. Testing
+
+```powershell
+# Run the test suite
+.venv\Scripts\python.exe -m pytest
+```
+
+## 10. Git Workflow
+
+- Small, logical commits with clear messages.
+- Inspect `git status` / `git diff` before committing.
+- Never commit `.env`, secrets, model weights, recordings, or generated caches.
+
+## 11. Security Rules
+
+- Never commit API keys, passwords, tokens, camera credentials, or database
+  credentials.
+- Never commit `.env` files (use `.env.example` as a template).
+- Keep database access isolated from business logic.
+- The frontend must communicate through documented APIs/WebSocket, never
+  directly with the database.

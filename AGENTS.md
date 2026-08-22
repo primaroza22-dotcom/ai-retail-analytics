@@ -8,7 +8,7 @@ Always inspect the repository before modifying files.
 
 Prefer small, testable changes.
 
-Do not implement future sprint features unless explicitly requested.
+Never implement features from a future sprint unless explicitly instructed by the user.
 
 Never invent test results.
 
@@ -35,6 +35,10 @@ Each task must:
 5. Report
 
 Do not silently skip testing.
+
+Before making architectural changes, explain the reason and impact.
+
+After implementation, run appropriate tests and report actual results.
 
 ## Computer Vision
 
