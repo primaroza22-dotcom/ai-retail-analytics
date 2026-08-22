@@ -1,0 +1,19 @@
+{
+  "cameras": [
+    {
+      "id": "cam-entrance",
+      "name": "Entrance",
+      "rtsp_url": "rtsp://192.168.1.100:554/stream1",
+      "enabled": true,
+      "username": "admin",
+      "password_env": "CAMERA_PASSWORD",
+      "onvif_host": "192.168.1.100",
+      "onvif_port": 80,
+      "width": 1920,
+      "height": 1080,
+      "fps": 15,
+      "reconnect_interval": 5.0,
+      "max_reconnect_attempts": 10
+    }
+  ]
+}

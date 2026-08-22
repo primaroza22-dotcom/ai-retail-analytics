@@ -18,11 +18,12 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 1 — Foundation** (current). Only the project scaffold, Python
-environment, configuration, and basic tests are in place.
+**Sprint 2 — CCTV / RTSP / ONVIF** (current). The camera input subsystem
+(`ai.camera`) provides camera configuration, RTSP frame capture with
+automatic reconnect, multi-camera management, and an ONVIF foundation.
 
-> The full video/AI pipeline is **NOT** implemented yet. It will be built in
-> later sprints.
+> YOLO, tracking, analytics, and the dashboard are **NOT** implemented yet.
+> They will be built in later sprints.
 
 ## 4. Architecture
 
@@ -64,6 +65,7 @@ Sprint 8  Advanced Analytics + POS Integration
 ```text
 ai-retail-analytics/
 ├── ai/            # computer vision package
+│   └── camera/    # RTSP/ONVIF camera input (Sprint 2)
 ├── backend/       # FastAPI application (future)
 ├── frontend/      # Next.js dashboard (future)
 ├── config/        # configuration files
@@ -99,6 +101,9 @@ uv venv .venv --python 3.11
 
 # Activate it
 .venv\Scripts\Activate.ps1
+
+# Install runtime dependencies (camera input)
+uv pip install -r requirements.txt
 
 # Install test dependencies
 uv pip install -e ".[test]"
