@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# AI models
+models/*
+!models/.gitkeep
+*.pt
+*.onnx
+*.engine
+*.pth
+*.bin
+*.weights
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
+
+# Recordings & media
+recordings/*
+!recordings/.gitkeep
+data/*
+!data/.gitkeep
+*.mp4
+*.avi
+*.mov
+
+# Cache & logs
+.cache/
+*.log
+
+# Docker
+docker/volumes/

@@ -1,0 +1,7 @@
+# AI Retail Analytics Platform - runtime dependencies
+#
+# Sprint 1 (Foundation): no runtime dependencies required.
+#
+# AI / vision dependencies (e.g. ultralytics, opencv-python) and other
+# runtime packages will be added in later sprints when they are actually
+# needed. Test dependencies are declared in pyproject.toml.
