@@ -4,5 +4,7 @@
 opencv-python>=4.8
 numpy>=1.24
 
-# AI / vision dependencies (e.g. ultralytics) will be added in later sprints.
+# Sprint 3: YOLO person detection.
+ultralytics>=8.0
+
 # Test dependencies are declared in pyproject.toml.

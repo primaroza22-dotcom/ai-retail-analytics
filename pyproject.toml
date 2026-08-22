@@ -20,3 +20,7 @@ include = ["ai*", "backend*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "smoke: model-based tests (download model and run inference)",
+    "integration: tests that wire multiple components together",
+]

@@ -18,11 +18,12 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 2 — CCTV / RTSP / ONVIF** (current). The camera input subsystem
-(`ai.camera`) provides camera configuration, RTSP frame capture with
-automatic reconnect, multi-camera management, and an ONVIF foundation.
+**Sprint 3 — YOLO Person Detection** (current). The detection subsystem
+(`ai.detection`) runs person detection on individual frames using an
+Ultralytics YOLO model and returns structured results. It is fully decoupled
+from the camera layer built in Sprint 2.
 
-> YOLO, tracking, analytics, and the dashboard are **NOT** implemented yet.
+> Object tracking, analytics, and the dashboard are **NOT** implemented yet.
 > They will be built in later sprints.
 
 ## 4. Architecture
@@ -65,7 +66,8 @@ Sprint 8  Advanced Analytics + POS Integration
 ```text
 ai-retail-analytics/
 ├── ai/            # computer vision package
-│   └── camera/    # RTSP/ONVIF camera input (Sprint 2)
+│   ├── camera/    # RTSP/ONVIF camera input (Sprint 2)
+│   └── detection/ # YOLO person detection (Sprint 3)
 ├── backend/       # FastAPI application (future)
 ├── frontend/      # Next.js dashboard (future)
 ├── config/        # configuration files
@@ -133,3 +135,41 @@ uv pip install -e ".[test]"
 - Keep database access isolated from business logic.
 - The frontend must communicate through documented APIs/WebSocket, never
   directly with the database.
+
+## 12. Person Detection (Sprint 3)
+
+The `ai.detection` package runs person detection on individual frames. It
+accepts a `numpy.ndarray` frame (from a `CameraStream`, an image file, or any
+other source) and returns a list of `Detection` objects.
+
+```python
+import cv2
+from ai.detection import DetectionConfig, YOLODetector
+
+config = DetectionConfig(
+    model_path="models/yolov8n.pt",   # downloaded automatically on first use
+    confidence_threshold=0.40,        # only keep detections >= this score
+    device="cpu",                     # "cpu" or "cuda" if a GPU is available
+)
+
+detector = YOLODetector(config)
+detector.load()
+
+frame = cv2.imread("image.jpg")
+detections = detector.detect(frame)
+
+for d in detections:
+    print(d.class_id, d.class_name, d.confidence, d.bbox.to_dict())
+```
+
+### Output format
+
+Each `Detection` has `class_id`, `class_name`, `confidence`, and a `bbox`
+(`x1`, `y1`, `x2`, `y2`). Sprint 3 returns only the `person` class (COCO id 0).
+
+### Model
+
+Uses a lightweight Ultralytics YOLO nano model (`yolov8n.pt`, ~6 MB). The
+model is downloaded on first use into `models/` and is git-ignored. CPU is
+the default device so development runs without a GPU; set `device="cuda"`
+when a CUDA GPU is available.
