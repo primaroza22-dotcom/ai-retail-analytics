@@ -18,13 +18,12 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 4 — Object Tracking** (current). The tracking subsystem
-(`ai.tracking`) assigns temporary track ids to person detections across
-frames using a ByteTrack backend, fully decoupled from the camera and
-detector layers.
+**Sprint 5 — Zone / ROI + Dwell Time** (current). The analytics subsystem
+(`ai.analytics`) classifies tracked persons into configurable zones and
+measures dwell time, fully decoupled from the camera, detector, and tracker.
 
-> Zone analytics, dwell time, and the dashboard are **NOT** implemented yet.
-> They will be built in later sprints.
+> The database, API, and dashboard are **NOT** implemented yet. They will be
+> built in later sprints.
 
 ## 4. Architecture
 
@@ -68,7 +67,8 @@ ai-retail-analytics/
 ├── ai/            # computer vision package
 │   ├── camera/    # RTSP/ONVIF camera input (Sprint 2)
 │   ├── detection/ # YOLO person detection (Sprint 3)
-│   └── tracking/  # ByteTrack object tracking (Sprint 4)
+│   ├── tracking/  # ByteTrack object tracking (Sprint 4)
+│   └── analytics/ # zone + dwell time (Sprint 5)
 ├── backend/       # FastAPI application (future)
 ├── frontend/      # Next.js dashboard (future)
 ├── config/        # configuration files
@@ -201,3 +201,44 @@ Each `TrackResult` has `track_id`, `class_id`, `class_name`, `confidence`,
 
 A `track_id` is only a **temporary identity within a single tracking session**.
 It is not a human identity and never encodes personal information.
+
+## 14. Zone / ROI + Dwell Time (Sprint 5)
+
+The `ai.analytics` package classifies tracks into zones and measures how long
+each track stays in a zone.
+
+### Coordinate system
+
+Image coordinates: origin `(0, 0)` is the **top-left**, `x` grows to the right
+and `y` grows downward. A track's position is its bounding-box **center point**
+`(center_x, center_y)`.
+
+### Zones and events
+
+A `Zone` is a polygon (list of `[x, y]` vertices). The `ZoneEngine` emits an
+`ENTER` event when a track's center enters a zone and an `EXIT` event when it
+leaves — without repeating events every frame.
+
+```python
+from ai.analytics import Zone, ZoneEngine, DwellTimeAnalyzer
+
+counter = Zone(zone_id="counter", name="Counter", polygon=[[100, 100], [500, 100], [500, 400], [100, 400]])
+engine = ZoneEngine([counter])
+dwell = DwellTimeAnalyzer()
+
+zone_events = engine.update(tracks, timestamp)   # -> [ENTER/EXIT, ...]
+dwell.update(zone_events)                         # starts/finishes sessions
+```
+
+### Dwell time
+
+```
+Track 17
+  ENTER Counter: 10:00:00
+  EXIT  Counter: 10:01:25
+  Dwell: 85 seconds
+```
+
+Sessions are keyed by `(track_id, zone_id)`. Re-entering a zone starts a new
+session (sessions are never merged). A `track_id` is only a temporary identity
+and never identifies a real person.
