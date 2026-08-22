@@ -18,12 +18,12 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 3 — YOLO Person Detection** (current). The detection subsystem
-(`ai.detection`) runs person detection on individual frames using an
-Ultralytics YOLO model and returns structured results. It is fully decoupled
-from the camera layer built in Sprint 2.
+**Sprint 4 — Object Tracking** (current). The tracking subsystem
+(`ai.tracking`) assigns temporary track ids to person detections across
+frames using a ByteTrack backend, fully decoupled from the camera and
+detector layers.
 
-> Object tracking, analytics, and the dashboard are **NOT** implemented yet.
+> Zone analytics, dwell time, and the dashboard are **NOT** implemented yet.
 > They will be built in later sprints.
 
 ## 4. Architecture
@@ -67,7 +67,8 @@ Sprint 8  Advanced Analytics + POS Integration
 ai-retail-analytics/
 ├── ai/            # computer vision package
 │   ├── camera/    # RTSP/ONVIF camera input (Sprint 2)
-│   └── detection/ # YOLO person detection (Sprint 3)
+│   ├── detection/ # YOLO person detection (Sprint 3)
+│   └── tracking/  # ByteTrack object tracking (Sprint 4)
 ├── backend/       # FastAPI application (future)
 ├── frontend/      # Next.js dashboard (future)
 ├── config/        # configuration files
@@ -173,3 +174,30 @@ Uses a lightweight Ultralytics YOLO nano model (`yolov8n.pt`, ~6 MB). The
 model is downloaded on first use into `models/` and is git-ignored. CPU is
 the default device so development runs without a GPU; set `device="cuda"`
 when a CUDA GPU is available.
+
+## 13. Object Tracking (Sprint 4)
+
+The `ai.tracking` package assigns temporary track ids to detections across
+consecutive frames using a ByteTrack backend.
+
+### Detection vs Tracking
+
+- **Detection**: a person is detected on a single frame.
+- **Tracking**: the same person keeps a temporary id across frames.
+
+```python
+from ai.tracking import ObjectTracker
+
+tracker = ObjectTracker()
+
+tracks_frame_1 = tracker.update(detections_frame_1)  # -> TrackResult(id=0, state=NEW)
+tracks_frame_2 = tracker.update(detections_frame_2)  # -> TrackResult(id=0, state=ACTIVE)
+```
+
+Each `TrackResult` has `track_id`, `class_id`, `class_name`, `confidence`,
+`bbox`, and a lifecycle `state` (`NEW`, `ACTIVE`, `LOST`, `REMOVED`).
+
+### Important
+
+A `track_id` is only a **temporary identity within a single tracking session**.
+It is not a human identity and never encodes personal information.

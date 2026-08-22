@@ -7,4 +7,7 @@ numpy>=1.24
 # Sprint 3: YOLO person detection.
 ultralytics>=8.0
 
+# Sprint 4: object tracking (ByteTrack backend).
+boxmot>=22.0
+
 # Test dependencies are declared in pyproject.toml.
