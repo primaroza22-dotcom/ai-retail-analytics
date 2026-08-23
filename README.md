@@ -18,12 +18,12 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 5 — Zone / ROI + Dwell Time** (current). The analytics subsystem
-(`ai.analytics`) classifies tracked persons into configurable zones and
-measures dwell time, fully decoupled from the camera, detector, and tracker.
+**Sprint 6 — FastAPI + PostgreSQL** (current). The backend (`backend`) exposes
+a REST API backed by SQLAlchemy/PostgreSQL to ingest and query retail
+analytics (zones, entry/exit events, dwell sessions). Business logic lives in
+services and database access in repositories — route handlers stay thin.
 
-> The database, API, and dashboard are **NOT** implemented yet. They will be
-> built in later sprints.
+> The dashboard is **NOT** implemented yet. It will be built in Sprint 7.
 
 ## 4. Architecture
 
@@ -69,7 +69,7 @@ ai-retail-analytics/
 │   ├── detection/ # YOLO person detection (Sprint 3)
 │   ├── tracking/  # ByteTrack object tracking (Sprint 4)
 │   └── analytics/ # zone + dwell time (Sprint 5)
-├── backend/       # FastAPI application (future)
+├── backend/       # FastAPI application (Sprint 6)
 ├── frontend/      # Next.js dashboard (future)
 ├── config/        # configuration files
 ├── data/          # local data (git-ignored content)
@@ -242,3 +242,43 @@ Track 17
 Sessions are keyed by `(track_id, zone_id)`. Re-entering a zone starts a new
 session (sessions are never merged). A `track_id` is only a temporary identity
 and never identifies a real person.
+
+## 15. FastAPI + PostgreSQL (Sprint 6)
+
+The `backend` package exposes a REST API that ingests and queries retail
+analytics. It follows a layered design so each concern stays isolated:
+
+```text
+Route handlers (backend/routers.py)   # HTTP only, no logic
+        ↓
+Services (backend/services.py)        # business rules
+        ↓
+Repositories (backend/repositories.py)  # data access only
+        ↓
+SQLAlchemy models (backend/models.py)   # PostgreSQL (or SQLite in tests)
+```
+
+### Configuration
+
+`DATABASE_URL` selects the database. Production uses PostgreSQL; tests use
+SQLite so the suite runs without a live server.
+
+### Run the server
+
+```powershell
+.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
+```
+
+### Endpoints
+
+| Method | Path                | Description                         |
+| ------ | ------------------- | ----------------------------------- |
+| GET    | `/health`           | Liveness + database connectivity    |
+| POST   | `/zones`            | Create a zone (polygon >= 3 points) |
+| GET    | `/zones`            | List zones                          |
+| POST   | `/events`           | Record ENTER/EXIT zone events       |
+| POST   | `/dwell-sessions`   | Record completed dwell sessions     |
+| GET    | `/analytics/dwell`  | Dwell sessions + per-zone summary   |
+
+A dwell session's `duration` is derived server-side (`exit_time - enter_time`)
+to keep a single source of truth. A `track_id` is a temporary identity only.

@@ -10,4 +10,11 @@ ultralytics>=8.0
 # Sprint 4: object tracking (ByteTrack backend).
 boxmot>=22.0
 
+# Sprint 6: FastAPI + PostgreSQL (API layer and persistence).
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sqlalchemy>=2.0
+psycopg[binary]>=3.1
+pydantic-settings>=2.2
+
 # Test dependencies are declared in pyproject.toml.
