@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # PostgreSQL in production; SQLite is used only for tests.
     database_url: str = "sqlite:///./data/arap.db"
 
+    # Allowed frontend origins for CORS (development default only).
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -18,12 +18,12 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 6 — FastAPI + PostgreSQL** (current). The backend (`backend`) exposes
-a REST API backed by SQLAlchemy/PostgreSQL to ingest and query retail
-analytics (zones, entry/exit events, dwell sessions). Business logic lives in
-services and database access in repositories — route handlers stay thin.
+**Sprint 7 — Next.js Dashboard** (current). The frontend (`frontend`) is a
+Next.js dashboard that consumes the FastAPI REST API. It only displays data and
+sends form input — it never touches PostgreSQL, SQL, or the AI/vision pipeline.
 
-> The dashboard is **NOT** implemented yet. It will be built in Sprint 7.
+> Real-time (WebSocket), CCTV streaming, and live tracking visualization are
+> **NOT** implemented yet. They will be built in later sprints.
 
 ## 4. Architecture
 
@@ -70,7 +70,7 @@ ai-retail-analytics/
 │   ├── tracking/  # ByteTrack object tracking (Sprint 4)
 │   └── analytics/ # zone + dwell time (Sprint 5)
 ├── backend/       # FastAPI application (Sprint 6)
-├── frontend/      # Next.js dashboard (future)
+├── frontend/      # Next.js dashboard (Sprint 7)
 ├── config/        # configuration files
 ├── data/          # local data (git-ignored content)
 ├── models/        # AI model weights (git-ignored)
@@ -282,3 +282,46 @@ SQLite so the suite runs without a live server.
 
 A dwell session's `duration` is derived server-side (`exit_time - enter_time`)
 to keep a single source of truth. A `track_id` is a temporary identity only.
+
+## 16. Next.js Dashboard (Sprint 7)
+
+The `frontend` package is a Next.js (App Router) + TypeScript + Tailwind CSS
+dashboard that consumes the FastAPI REST API. It is presentation-only: no SQL,
+no PostgreSQL access, no YOLO/tracking/analytics code, and no business rules.
+
+### Setup
+
+```powershell
+cd frontend
+npm install
+npm run dev          # http://localhost:3000
+```
+
+The dashboard expects the FastAPI backend to be running (Sprint 6). The API
+base URL is configured via `NEXT_PUBLIC_API_BASE_URL` (see `frontend/.env.example`).
+
+### Routes
+
+| Path                  | Description                          |
+| --------------------- | ------------------------------------ |
+| `/dashboard`          | KPIs, dwell-by-zone chart, zone list |
+| `/dashboard/zones`    | Zone list + create-zone form         |
+| `/dashboard/dwell`    | Dwell sessions table + summary       |
+| `/dashboard/events`   | Event test form (admin)              |
+
+### Notes
+
+- The backend exposes no `GET /events` endpoint yet, so the Events page shows a
+  read-only notice plus an admin form that uses `POST /events`. A read-only
+  event list is deferred to a future sprint.
+- Zone edit/delete are not yet supported by the API; the dashboard only creates
+  zones.
+- CORS in the backend (Sprint 6) allows `http://localhost:3000` by default and
+  is configurable via `CORS_ORIGINS`.
+
+### Checks
+
+```powershell
+npm run lint
+npm run build
+```

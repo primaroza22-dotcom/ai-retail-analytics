@@ -6,6 +6,8 @@ SQLAlchemy models so the wire format can evolve independently of persistence.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -33,6 +35,7 @@ class ZoneRead(BaseModel):
     name: str
     polygon: list[list[float]]
     enabled: bool
+    created_at: datetime
 
 
 class ZoneEventCreate(BaseModel):

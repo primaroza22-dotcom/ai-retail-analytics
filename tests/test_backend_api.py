@@ -92,3 +92,21 @@ def test_dwell_exit_before_enter_rejected(client: TestClient) -> None:
     client.post("/zones", json=ZONE)
     bad = [{"track_id": 1, "zone_id": "counter", "enter_time": 50.0, "exit_time": 40.0}]
     assert client.post("/dwell-sessions", json=bad).status_code == 422
+
+
+def test_zone_response_includes_created_at(client: TestClient) -> None:
+    assert client.post("/zones", json=ZONE).status_code == 201
+    zone = client.get("/zones").json()[0]
+    assert "created_at" in zone
+    assert zone["created_at"]
+
+
+def test_cors_allows_development_origin(client: TestClient) -> None:
+    resp = client.get("/health", headers={"Origin": "http://localhost:3000"})
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+def test_cors_blocks_unknown_origin(client: TestClient) -> None:
+    resp = client.get("/health", headers={"Origin": "http://evil.example.com"})
+    assert "access-control-allow-origin" not in resp.headers
