@@ -10,8 +10,24 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from sqlalchemy.orm import Session
 
 from .exceptions import ConflictError, NotFoundError
+from .forecasting import (
+    MIN_HISTORY,
+    MODEL_NAMES,
+    TARGETS,
+    aggregate_daily,
+    detect_anomalies,
+    evaluate_candidates,
+    extract_series,
+    forecast_series,
+    generate_insights,
+    pearson,
+    transaction_rate,
+)
 from .models import (
     STATUS_COMPLETED,
     STATUS_ONGOING,
@@ -581,3 +597,188 @@ class TransactionService:
                 terminal_id=terminal_id,
             )
         )
+
+
+class ForecastService:
+    """Forecasting + AI analytics over daily aggregated data."""
+
+    def __init__(
+        self,
+        session: Session,
+        bus: EventBus | None = None,
+        timezone: str = "UTC",
+    ) -> None:
+        self._session = session
+        self._bus = bus
+        self._timezone = timezone
+
+    def _records(self, camera_id: str | None = None) -> list:
+        return aggregate_daily(self._session, camera_id=camera_id, tz=self._timezone)
+
+    @staticmethod
+    def _series(records, target: str) -> tuple[list[str], list[float]]:
+        series = extract_series(records, target)
+        return [d for d, _ in series], [v for _, v in series]
+
+    def forecast(self, target: str, horizon: int, camera_id: str | None = None) -> dict:
+        records = self._records(camera_id)
+        dates, values = self._series(records, target)
+        if len(values) < MIN_HISTORY:
+            return {
+                "status": "insufficient_history",
+                "target": target,
+                "camera_id": camera_id,
+                "min_history": MIN_HISTORY,
+                "available": len(values),
+                "forecast": [],
+                "evaluation": [],
+            }
+        result = forecast_series(dates, values, horizon)
+        return {
+            "status": "ok",
+            "target": target,
+            "horizon": horizon,
+            "camera_id": camera_id,
+            "model": result["model"],
+            "forecast": result["points"],
+            "evaluation": result["evaluation"],
+        }
+
+    def evaluation(self, target: str, camera_id: str | None = None) -> dict:
+        records = self._records(camera_id)
+        dates, values = self._series(records, target)
+        if len(values) < MIN_HISTORY:
+            return {
+                "status": "insufficient_history",
+                "target": target,
+                "min_history": MIN_HISTORY,
+                "available": len(values),
+                "results": [],
+            }
+        return {
+            "status": "ok",
+            "target": target,
+            "camera_id": camera_id,
+            "results": evaluate_candidates(dates, values),
+        }
+
+    @staticmethod
+    def models() -> dict:
+        return {"models": [{"name": name, "version": "1"} for name in MODEL_NAMES]}
+
+    def trends(self, camera_id: str | None = None) -> list[dict]:
+        records = self._records(camera_id)
+        ordered = sorted(records, key=lambda r: r.date)
+        if len(ordered) < 14:
+            return []
+        trends = []
+        for target in TARGETS:
+            values = [record.value(target) for record in ordered]
+            recent = sum(values[-7:]) / 7
+            previous = sum(values[-14:-7]) / 7
+            if previous == 0:
+                continue
+            change = (recent - previous) / abs(previous)
+            trends.append(
+                {
+                    "target": target,
+                    "recent_avg": recent,
+                    "previous_avg": previous,
+                    "change_pct": round(change * 100, 2),
+                }
+            )
+        return trends
+
+    def correlations(self, camera_id: str | None = None) -> list[dict]:
+        records = sorted(self._records(camera_id), key=lambda r: r.date)
+        if len(records) < 2:
+            return []
+
+        def series(metric: str) -> list[float]:
+            if metric == "avg_dwell":
+                return [r.avg_dwell if r.avg_dwell is not None else 0.0 for r in records]
+            return [r.value(metric) for r in records]
+
+        pairs = [
+            ("traffic", "transactions"),
+            ("traffic", "net_sales"),
+            ("avg_dwell", "transactions"),
+            ("transactions", "net_sales"),
+        ]
+        results = []
+        for a, b in pairs:
+            value = pearson(series(a), series(b))
+            if value is not None:
+                results.append({"a": a, "b": b, "correlation": round(value, 4)})
+        return results
+
+    def anomalies(self, camera_id: str | None = None) -> list[dict]:
+        records = sorted(self._records(camera_id), key=lambda r: r.date)
+        anomalies = []
+        for target in ("traffic", "transactions", "net_sales"):
+            dates = [r.date for r in records]
+            values = [r.value(target) for r in records]
+            for anomaly in detect_anomalies(dates, values):
+                anomalies.append({**anomaly, "metric": target})
+        anomalies.sort(key=lambda a: a["date"], reverse=True)
+        return anomalies
+
+    def insights(self, camera_id: str | None = None) -> list[dict]:
+        return generate_insights(self._records(camera_id))
+
+    def today(self) -> dict:
+        start = self._today_start_epoch()
+        records = aggregate_daily(self._session, start_time=start, tz=self._timezone)
+        record = records[0] if records else None
+        return {
+            "date": (datetime.fromtimestamp(start, tz=timezone.utc).date().isoformat()
+                     if self._timezone == "UTC"
+                     else datetime.fromtimestamp(start, tz=ZoneInfo(self._timezone)).date().isoformat()),
+            "transactions": int(record.transactions) if record else 0,
+            "net_sales": float(record.net_sales) if record else 0.0,
+            "items_sold": float(record.items_sold) if record else 0.0,
+            "traffic": float(record.traffic) if record else 0.0,
+            "avg_transaction_value": record.avg_transaction_value if record else None,
+        }
+
+    def _today_start_epoch(self) -> float:
+        if self._timezone == "UTC":
+            now = datetime.now(timezone.utc)
+            start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+            return start.timestamp()
+        now = datetime.now(ZoneInfo(self._timezone))
+        start = datetime(now.year, now.month, now.day, tzinfo=now.tzinfo)
+        return start.timestamp()
+
+    def refresh(self) -> dict:
+        """Recompute forecasts/insights/anomalies and publish real-time events."""
+        published = {"forecast_updated": 0, "analytics_insight": 0, "anomaly_detected": 0}
+
+        for target in ("traffic", "transactions", "net_sales"):
+            result = self.forecast(target, horizon=7)
+            if result["status"] != "ok":
+                continue
+            self._publish(
+                EventType.FORECAST_UPDATED,
+                {
+                    "target": target,
+                    "horizon": 7,
+                    "model": result["model"],
+                    "forecast": result["forecast"],
+                },
+            )
+            published["forecast_updated"] += 1
+
+        for insight in self.insights():
+            self._publish(EventType.ANALYTICS_INSIGHT, insight)
+            published["analytics_insight"] += 1
+
+        for anomaly in self.anomalies():
+            self._publish(EventType.ANOMALY_DETECTED, anomaly)
+            published["anomaly_detected"] += 1
+
+        return {"published": published}
+
+    def _publish(self, event_type: EventType, data: dict) -> None:
+        if self._bus is not None:
+            self._bus.publish(Event(event_type, time.time(), data))

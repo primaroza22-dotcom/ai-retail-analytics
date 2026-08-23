@@ -14,7 +14,13 @@ from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisc
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from .deps import get_analytics_service, get_camera_service, get_transaction_service, get_zone_service
+from .deps import (
+    get_analytics_service,
+    get_camera_service,
+    get_forecast_service,
+    get_transaction_service,
+    get_zone_service,
+)
 from .realtime import Event, EventType
 from .schemas import (
     AnalyticsSummary,
@@ -42,7 +48,7 @@ from .schemas import (
     ZoneRead,
     ZoneUpdate,
 )
-from .services import AnalyticsService, CameraService, TransactionService, ZoneService
+from .services import AnalyticsService, CameraService, ForecastService, TransactionService, ZoneService
 
 router = APIRouter()
 
@@ -404,3 +410,74 @@ def update_transaction_status(
     service: TransactionService = Depends(get_transaction_service),
 ) -> TransactionRead:
     return service.update_status(transaction_id, payload.status)
+
+
+# --- Forecasting + AI analytics ---
+
+ForecastTarget = Literal["traffic", "transactions", "net_sales", "items_sold", "avg_transaction_value"]
+
+
+@router.get("/forecast", tags=["forecasting"])
+def forecast(
+    target: ForecastTarget = "net_sales",
+    horizon: int = Query(default=7, ge=1, le=30),
+    camera_id: str | None = None,
+    service: ForecastService = Depends(get_forecast_service),
+) -> dict:
+    return service.forecast(target, horizon, camera_id)
+
+
+@router.get("/forecast/models", tags=["forecasting"])
+def forecast_models(service: ForecastService = Depends(get_forecast_service)) -> dict:
+    return service.models()
+
+
+@router.get("/forecast/evaluation", tags=["forecasting"])
+def forecast_evaluation(
+    target: ForecastTarget = "net_sales",
+    camera_id: str | None = None,
+    service: ForecastService = Depends(get_forecast_service),
+) -> dict:
+    return service.evaluation(target, camera_id)
+
+
+@router.post("/forecast/refresh", tags=["forecasting"])
+def forecast_refresh(service: ForecastService = Depends(get_forecast_service)) -> dict:
+    return service.refresh()
+
+
+@router.get("/analytics/trends", tags=["forecasting"])
+def analytics_trends(
+    camera_id: str | None = None,
+    service: ForecastService = Depends(get_forecast_service),
+) -> list[dict]:
+    return service.trends(camera_id)
+
+
+@router.get("/analytics/correlations", tags=["forecasting"])
+def analytics_correlations(
+    camera_id: str | None = None,
+    service: ForecastService = Depends(get_forecast_service),
+) -> list[dict]:
+    return service.correlations(camera_id)
+
+
+@router.get("/analytics/anomalies", tags=["forecasting"])
+def analytics_anomalies(
+    camera_id: str | None = None,
+    service: ForecastService = Depends(get_forecast_service),
+) -> list[dict]:
+    return service.anomalies(camera_id)
+
+
+@router.get("/analytics/insights", tags=["forecasting"])
+def analytics_insights(
+    camera_id: str | None = None,
+    service: ForecastService = Depends(get_forecast_service),
+) -> list[dict]:
+    return service.insights(camera_id)
+
+
+@router.get("/analytics/today", tags=["analytics"])
+def analytics_today(service: ForecastService = Depends(get_forecast_service)) -> dict:
+    return service.today()

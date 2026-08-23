@@ -18,14 +18,14 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 12 — POS Integration Layer + Transaction Analytics** (current). The
-backend now has a vendor-neutral POS adapter interface, a transaction + line
-item model (with idempotent ingestion), transaction REST APIs and analytics,
-and POS events flowing through the existing WebSocket. The dashboard shows a
-live POS / Sales section.
+**Sprint 13 — Forecasting + AI Analytics** (current). The backend now has a
+daily time-series aggregation layer, feature engineering, baseline + linear
+forecast models with chronological evaluation, correlation/conversion/anomaly
+analytics, and deterministic AI insights. The dashboard shows a 7-day forecast
+and AI analytics section.
 
-> Forecasting, customer identity, loyalty, payment gateways, and ERP
-> integration are **NOT** implemented yet.
+> Deep learning, generative AI, autonomous decision-making, and production ML
+> deployment are **NOT** implemented yet.
 
 ## 4. Architecture
 
@@ -643,3 +643,74 @@ New event types: `transaction_created`, `transaction_updated`,
 - No refund-line modeling: refunds are represented as a status change on the
   original transaction.
 - POS ingestion endpoint is internal/unauthenticated (documented; auth deferred).
+
+## 22. Forecasting + AI Analytics (Sprint 13)
+
+A forecasting layer on top of the daily-aggregated data, plus deterministic
+diagnostic analytics.
+
+```
+Camera + POS → Analytics → Features → Forecast → AI Insights
+```
+
+### Timezone policy
+
+Event/dwell/transaction times are Unix epoch seconds (UTC). Daily aggregation
+converts to a configurable business timezone (`analytics_timezone`, default
+`UTC`) — never hard-coded into calculations.
+
+### Daily aggregation
+
+`backend/forecasting/aggregation.py` produces `DailyRecord`s (traffic, dwell,
+transactions, sales, items) grouped by day. `traffic` is defined as the number
+of zone-enter events (a camera-scopable visit count), NOT an identified-person
+count.
+
+### Feature engineering
+
+Calendar features (day index, weekday) plus lag (`lag_1/7/14`) and rolling
+(`rolling_7/14`) features — all computed from past values only (no leakage).
+
+### Models
+
+- Baselines: naive, seasonal naive, moving average.
+- Model: linear regression over `[day index, weekday dummies]` (NumPy, no
+  external ML dependency).
+
+Models are evaluated **chronologically** (no random split) with MAE/RMSE/MAPE/
+WAPE and compared honestly; the best (lowest MAE) is used for forecasting.
+
+### API
+
+| Method | Path                      | Description                    |
+| ------ | ------------------------- | ------------------------------ |
+| GET    | `/forecast`               | 7-day forecast (target, horizon, camera_id) |
+| GET    | `/forecast/models`        | Available models               |
+| GET    | `/forecast/evaluation`    | Chronological model comparison |
+| POST   | `/forecast/refresh`       | Recompute + publish WS events  |
+| GET    | `/analytics/trends`       | Recent vs previous trends      |
+| GET    | `/analytics/correlations` | Traffic/sales/dwell correlation|
+| GET    | `/analytics/anomalies`    | Rolling-window anomalies       |
+| GET    | `/analytics/insights`     | Deterministic AI insights      |
+| GET    | `/analytics/today`        | Authoritative "today" summary  |
+
+Forecast targets: `traffic`, `transactions`, `net_sales`, `items_sold`,
+`avg_transaction_value`. Insufficient history (< 21 days) returns
+`insufficient_history` instead of meaningless predictions.
+
+### Conversion metric
+
+`transaction_rate_vs_traffic = transactions / traffic` — an operational ratio,
+**not** person-level conversion (returns `null` when traffic is zero).
+
+### Real-time events
+
+`forecast_updated`, `analytics_insight`, `anomaly_detected` flow through the
+existing `/ws/events` endpoint, published only on `/forecast/refresh`.
+
+### Known limitations
+
+- Forecasts are computed on demand from a small daily dataset (in-memory cache);
+  no persistent model artifacts yet.
+- Non-UTC timezone aggregation is approximate at the UTC-day boundary.
+- Anomaly detection uses rolling mean/std (z-score); no advanced models.

@@ -7,10 +7,12 @@
 
 import type {
   AnalyticsSummary,
+  AnomalyItem,
   Camera,
   CameraCreate,
   CameraStatus,
   CameraUpdate,
+  CorrelationItem,
   DailyAnalytics,
   DwellListResponse,
   DwellQuery,
@@ -18,14 +20,18 @@ import type {
   DwellSessionCreate,
   EventListResponse,
   EventQuery,
+  ForecastResponse,
   HealthResponse,
+  InsightItem,
   TimeRangeQuery,
+  TodaySummary,
   Transaction,
   TransactionIngest,
   TransactionItem,
   TransactionListResponse,
   TransactionQuery,
   TransactionSummary,
+  TrendItem,
   Zone,
   ZoneAnalytics,
   ZoneCreate,
@@ -159,6 +165,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(transactions),
     }),
+
+  getForecast: (target: string, horizon = 7, cameraId?: string) =>
+    request<ForecastResponse>(
+      `/forecast${buildQuery({ target, horizon, camera_id: cameraId })}`,
+    ),
+  getForecastModels: () => request<{ models: { name: string; version: string }[] }>("/forecast/models"),
+  refreshForecast: () => request<{ published: Record<string, number> }>("/forecast/refresh", { method: "POST" }),
+  getTrends: () => request<TrendItem[]>("/analytics/trends"),
+  getCorrelations: () => request<CorrelationItem[]>("/analytics/correlations"),
+  getAnomalies: () => request<AnomalyItem[]>("/analytics/anomalies"),
+  getInsights: () => request<InsightItem[]>("/analytics/insights"),
+  getToday: () => request<TodaySummary>("/analytics/today"),
 };
 
 /** Convert an unknown thrown value into a user-friendly message. */

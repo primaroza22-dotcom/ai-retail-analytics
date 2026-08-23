@@ -34,6 +34,9 @@ class EventType(str, Enum):
     TRANSACTION_UPDATED = "transaction_updated"
     TRANSACTION_CANCELLED = "transaction_cancelled"
     TRANSACTION_REFUNDED = "transaction_refunded"
+    FORECAST_UPDATED = "forecast_updated"
+    ANALYTICS_INSIGHT = "analytics_insight"
+    ANOMALY_DETECTED = "anomaly_detected"
 
 
 @dataclass(frozen=True)

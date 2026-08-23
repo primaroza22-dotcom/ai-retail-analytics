@@ -26,7 +26,10 @@ export type RealtimeEventType =
   | "transaction_created"
   | "transaction_updated"
   | "transaction_cancelled"
-  | "transaction_refunded";
+  | "transaction_refunded"
+  | "forecast_updated"
+  | "analytics_insight"
+  | "anomaly_detected";
 
 export interface RealtimeEvent {
   type: RealtimeEventType;

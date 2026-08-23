@@ -276,3 +276,68 @@ export interface TransactionQuery {
   payment_method?: string;
   terminal_id?: string;
 }
+
+export interface ForecastPoint {
+  date: string;
+  predicted_value: number;
+}
+
+export interface ForecastModelEval {
+  model: string;
+  mae: number;
+  rmse: number;
+  mape: number | null;
+  wape: number | null;
+  n_test: number;
+}
+
+export interface ForecastResponse {
+  status: "ok" | "insufficient_history";
+  target: string;
+  horizon?: number;
+  camera_id?: string | null;
+  model?: string | null;
+  forecast: ForecastPoint[];
+  evaluation: ForecastModelEval[];
+  min_history?: number;
+  available?: number;
+}
+
+export interface TrendItem {
+  target: string;
+  recent_avg: number;
+  previous_avg: number;
+  change_pct: number;
+}
+
+export interface CorrelationItem {
+  a: string;
+  b: string;
+  correlation: number;
+}
+
+export interface AnomalyItem {
+  metric: string;
+  date: string;
+  actual: number;
+  expected: number;
+  deviation: number;
+  direction: "high" | "low";
+  severity: string;
+}
+
+export interface InsightItem {
+  type: string;
+  metric: string;
+  direction: string;
+  message: string;
+}
+
+export interface TodaySummary {
+  date: string;
+  transactions: number;
+  net_sales: number;
+  items_sold: number;
+  traffic: number;
+  avg_transaction_value: number | null;
+}

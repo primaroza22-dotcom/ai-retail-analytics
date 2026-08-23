@@ -5,6 +5,7 @@ import { CameraPanel } from "@/components/dashboard/CameraPanel";
 import { DailyChart } from "@/components/dashboard/DailyChart";
 import { DataTable } from "@/components/dashboard/DataTable";
 import { DwellChart } from "@/components/dashboard/DwellChart";
+import { ForecastPanel } from "@/components/dashboard/ForecastPanel";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { LivePanel } from "@/components/dashboard/LivePanel";
 import { SalesPanel } from "@/components/dashboard/SalesPanel";
@@ -52,6 +53,8 @@ export default function DashboardPage() {
       </div>
 
       <SalesPanel />
+
+      <ForecastPanel />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard

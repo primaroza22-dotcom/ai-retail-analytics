@@ -1,6 +1,8 @@
 "use client";
 
+import { api } from "@/services/api";
 import { formatTimestamp } from "@/services/format";
+import { useApi } from "@/services/use-api";
 
 import { useRealtime } from "./RealtimeProvider";
 
@@ -25,19 +27,23 @@ function statusBadge(status: string) {
 
 export function SalesPanel() {
   const { transactions, salesCounters } = useRealtime();
+  const today = useApi(() => api.getToday());
 
-  const average =
-    salesCounters.transactions > 0 ? salesCounters.sales / salesCounters.transactions : 0;
+  const baseline = today.data;
+  const transactionsTotal = (baseline?.transactions ?? 0) + salesCounters.transactions;
+  const salesTotal = (baseline?.net_sales ?? 0) + salesCounters.sales;
+  const itemsTotal = (baseline?.items_sold ?? 0) + salesCounters.items;
+  const average = transactionsTotal > 0 ? salesTotal / transactionsTotal : 0;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-sm font-semibold text-slate-900">POS / Sales</h2>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <LiveStat label="Transactions Today" value={String(salesCounters.transactions)} />
-        <LiveStat label="Sales Today" value={money(salesCounters.sales)} />
+        <LiveStat label="Transactions Today" value={String(transactionsTotal)} />
+        <LiveStat label="Sales Today" value={money(salesTotal)} />
         <LiveStat label="Average Transaction" value={money(average)} />
-        <LiveStat label="Items Sold" value={String(salesCounters.items)} />
+        <LiveStat label="Items Sold" value={String(itemsTotal)} />
       </div>
 
       <div className="mt-5">

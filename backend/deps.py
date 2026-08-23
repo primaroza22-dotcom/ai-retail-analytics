@@ -19,7 +19,7 @@ from .repositories import (
     TransactionRepository,
     ZoneRepository,
 )
-from .services import AnalyticsService, CameraService, TransactionService, ZoneService
+from .services import AnalyticsService, CameraService, ForecastService, TransactionService, ZoneService
 
 
 def get_session(request: Request) -> Iterator[Session]:
@@ -56,4 +56,12 @@ def get_transaction_service(request: Request, session: Session = Depends(get_ses
     return TransactionService(
         TransactionRepository(session),
         bus=request.app.state.event_bus,
+    )
+
+
+def get_forecast_service(request: Request, session: Session = Depends(get_session)) -> ForecastService:
+    return ForecastService(
+        session,
+        bus=request.app.state.event_bus,
+        timezone=request.app.state.settings.analytics_timezone,
     )

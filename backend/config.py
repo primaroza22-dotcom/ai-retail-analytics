@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # Real-time WebSocket keepalive interval (seconds).
     websocket_heartbeat_interval: float = 30.0
 
+    # Business timezone for daily analytics/forecasting aggregation.
+    analytics_timezone: str = "UTC"
+
 
 @lru_cache
 def get_settings() -> Settings:
