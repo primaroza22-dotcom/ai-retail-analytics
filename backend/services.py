@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from .exceptions import ConflictError, NotFoundError
 from .models import STATUS_COMPLETED, STATUS_ONGOING, DwellSession, Zone, ZoneEvent
+from .realtime import Event, EventBus, EventType
 from .repositories import DwellRepository, EventRepository, ZoneRepository
 from .schemas import (
     AnalyticsSummary,
@@ -68,14 +69,20 @@ class AnalyticsService:
         zones: ZoneRepository,
         events: EventRepository,
         dwell: DwellRepository,
+        bus: EventBus | None = None,
     ) -> None:
         self._zones = zones
         self._events = events
         self._dwell = dwell
+        self._bus = bus
 
     def _require_zone(self, zone_id: str) -> None:
         if self._zones.get(zone_id) is None:
             raise NotFoundError(f"Unknown zone: {zone_id}")
+
+    def _publish(self, event_type: EventType, data: dict) -> None:
+        if self._bus is not None:
+            self._bus.publish(Event(event_type, time.time(), data))
 
     # --- Events ---
 
@@ -92,6 +99,18 @@ class AnalyticsService:
                 )
             )
         self._events.add_many(models)
+        for model in models:
+            event_type = (
+                EventType.ZONE_ENTER if model.event_type == "enter" else EventType.ZONE_EXIT
+            )
+            self._publish(
+                event_type,
+                {
+                    "track_id": model.track_id,
+                    "zone_id": model.zone_id,
+                    "timestamp": model.timestamp,
+                },
+            )
         return [ZoneEventRead.model_validate(model) for model in models]
 
     def list_events(
@@ -149,6 +168,27 @@ class AnalyticsService:
                 )
             )
         self._dwell.add_many(models)
+        for model in models:
+            if model.status == STATUS_ONGOING:
+                self._publish(
+                    EventType.DWELL_STARTED,
+                    {
+                        "track_id": model.track_id,
+                        "zone_id": model.zone_id,
+                        "enter_time": model.enter_time,
+                    },
+                )
+            else:
+                self._publish(
+                    EventType.DWELL_COMPLETED,
+                    {
+                        "track_id": model.track_id,
+                        "zone_id": model.zone_id,
+                        "enter_time": model.enter_time,
+                        "exit_time": model.exit_time,
+                        "duration": model.duration,
+                    },
+                )
         return [self._to_read(model, item.enter_time) for model, item in zip(models, items)]
 
     @staticmethod

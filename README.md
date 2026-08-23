@@ -18,13 +18,13 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 9 — Database Migration + Backend Hardening** (current). The database
-schema is now version-controlled with Alembic (source of truth for schema, not
-`create_all`), and the backend startup no longer creates or mutates tables
-automatically.
+**Sprint 10 — Real-Time WebSocket + Live Analytics** (current). The backend
+publishes real-time events over a WebSocket endpoint (`/ws/events`) backed by an
+event bus, and the dashboard consumes live events (connection status, live
+counters, live event feed) without polling REST endpoints.
 
-> Real-time (WebSocket), CCTV streaming, live tracking visualization, POS, and
-> forecasting are **NOT** implemented yet.
+> POS, forecasting, live CCTV streaming, and multi-camera architecture are
+> **NOT** implemented yet.
 
 ## 4. Architecture
 
@@ -403,3 +403,66 @@ alembic revision --autogenerate -m "message"   # generate a new revision (review
   `dwell_sessions.(track_id, zone_id, enter_time, status)`.
 - Ongoing dwell sessions keep `exit_time`/`duration` nullable (Sprint 8
   semantics preserved).
+
+## 19. Real-Time WebSocket (Sprint 10)
+
+The backend now streams live events over a WebSocket, and the dashboard
+consumes them without polling.
+
+```
+Camera → Detection → Tracking → Zone/Dwell → Event Engine
+                                                ├──→ PostgreSQL (persistence)
+                                                └──→ Event Bus
+                                                        ↓
+                                               WebSocket Manager
+                                                        ↓
+                                               Next.js Dashboard
+```
+
+### Endpoint
+
+- `GET /ws/events` — WebSocket endpoint (currently an internal endpoint; no
+  authentication yet). No credentials are placed in the URL.
+
+### Event envelope
+
+All messages use a stable, versioned envelope:
+
+```json
+{"type": "zone_enter", "version": 1, "timestamp": 1234567890.0, "data": {"zone_id": "counter", "track_id": 7}}
+```
+
+Event types (shared vocabulary between backend and frontend):
+
+`connection`, `heartbeat`, `detection`, `track_created`, `track_updated`,
+`zone_enter`, `zone_exit`, `dwell_started`, `dwell_updated`, `dwell_completed`,
+`analytics_update`, `system_status`.
+
+Currently emitted on ingestion: `zone_enter`, `zone_exit`, `dwell_started`,
+`dwell_completed`. The tracking/detection events are reserved for the live
+camera pipeline (future sprint).
+
+### Behavior
+
+- Persistence (PostgreSQL) remains the source of truth; WebSocket is a
+  delivery mechanism only.
+- A background event bus decouples sync producers from the async WebSocket
+  layer; WebSocket failures never break persistence or the REST API.
+- A heartbeat is broadcast every `websocket_heartbeat_interval` seconds
+  (default 30) and broken clients are dropped on send failure.
+- The frontend `RealtimeClient` reconnects with bounded exponential backoff
+  (1s → … → 30s cap), keeps a bounded 100-event buffer, and shows live
+  connection status, counters, and an event feed on the dashboard.
+
+### Security note
+
+`/ws/events` is an internal, unauthenticated endpoint for now. The event bus is
+structured so authentication can be added at the endpoint later without
+changing producers or the connection manager.
+
+### Tests
+
+```powershell
+.venv\Scripts\python.exe -m pytest           # incl. tests/test_realtime.py
+cd frontend; npm run lint; npm run build
+```

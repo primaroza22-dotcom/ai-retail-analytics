@@ -37,6 +37,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
+    # Real-time WebSocket keepalive interval (seconds).
+    websocket_heartbeat_interval: float = 30.0
+
 
 @lru_cache
 def get_settings() -> Settings:

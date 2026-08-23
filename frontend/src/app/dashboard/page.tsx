@@ -5,6 +5,7 @@ import { DailyChart } from "@/components/dashboard/DailyChart";
 import { DataTable } from "@/components/dashboard/DataTable";
 import { DwellChart } from "@/components/dashboard/DwellChart";
 import { KpiCard } from "@/components/dashboard/KpiCard";
+import { LivePanel } from "@/components/dashboard/LivePanel";
 import { EmptyState, ErrorState, LoadingState } from "@/components/dashboard/StatusStates";
 import { api } from "@/services/api";
 import { formatDuration } from "@/services/format";
@@ -42,6 +43,8 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      <LivePanel />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard

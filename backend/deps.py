@@ -33,9 +33,10 @@ def get_zone_service(session: Session = Depends(get_session)) -> ZoneService:
     return ZoneService(ZoneRepository(session))
 
 
-def get_analytics_service(session: Session = Depends(get_session)) -> AnalyticsService:
+def get_analytics_service(request: Request, session: Session = Depends(get_session)) -> AnalyticsService:
     return AnalyticsService(
         ZoneRepository(session),
         EventRepository(session),
         DwellRepository(session),
+        bus=request.app.state.event_bus,
     )

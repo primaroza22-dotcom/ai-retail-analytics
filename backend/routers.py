@@ -6,13 +6,15 @@ No business logic or database access lives here.
 
 from __future__ import annotations
 
+import time
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from .deps import get_analytics_service, get_zone_service
+from .realtime import Event, EventType
 from .schemas import (
     AnalyticsSummary,
     DailyAnalytics,
@@ -42,6 +44,24 @@ def health(request: Request) -> JSONResponse:
     except Exception:
         return JSONResponse(status_code=503, content={"status": "error"})
     return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+@router.websocket("/ws/events")
+async def websocket_events(websocket: WebSocket) -> None:
+    """Real-time event stream (internal endpoint, no auth yet)."""
+    manager = websocket.app.state.connection_manager
+    await manager.connect(websocket)
+    await manager.send_personal(
+        websocket,
+        Event(EventType.CONNECTION, time.time(), {"status": "connected"}).to_dict(),
+    )
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.disconnect(websocket)
 
 
 # --- Zones ---
