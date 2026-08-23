@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -34,7 +34,9 @@ class Zone(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     polygon: Mapped[list] = mapped_column(JSON, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
 
     events: Mapped[list[ZoneEvent]] = relationship(back_populates="zone")
     sessions: Mapped[list[DwellSession]] = relationship(back_populates="zone")
@@ -50,7 +52,9 @@ class ZoneEvent(Base):
     zone_id: Mapped[str] = mapped_column(ForeignKey("zones.id"), nullable=False, index=True)
     event_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
     timestamp: Mapped[float] = mapped_column(Float, nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
 
     zone: Mapped[Zone] = relationship(back_populates="events")
 

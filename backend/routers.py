@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from .deps import get_analytics_service, get_session, get_zone_service
+from .deps import get_analytics_service, get_zone_service
 from .schemas import (
     AnalyticsSummary,
     DailyAnalytics,
@@ -33,9 +34,14 @@ router = APIRouter()
 
 
 @router.get("/health", tags=["system"])
-def health(session=Depends(get_session)) -> dict:
-    session.execute(text("SELECT 1"))
-    return {"status": "ok"}
+def health(request: Request) -> JSONResponse:
+    """Liveness + database connectivity check (no credentials leaked)."""
+    try:
+        with request.app.state.engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "error"})
+    return JSONResponse(status_code=200, content={"status": "ok"})
 
 
 # --- Zones ---

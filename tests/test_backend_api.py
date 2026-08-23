@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.config import Settings
+from backend.database import Base
 
 ZONE = {
     "id": "counter",
@@ -26,6 +27,7 @@ ZONE = {
 def client(tmp_path: Path) -> TestClient:
     settings = Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}")
     app = create_app(settings)
+    Base.metadata.create_all(app.state.engine)
     with TestClient(app) as c:
         yield c
 

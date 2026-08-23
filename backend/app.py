@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import Settings, get_settings
-from .database import Base, create_engine_from_url, create_session_factory
+from .database import create_engine_from_url, create_session_factory
 from .exceptions import ConflictError, NotFoundError, ValidationError
 from .routers import router
 
@@ -22,8 +22,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     engine = create_engine_from_url(settings.database_url)
     session_factory = create_session_factory(engine)
-    Base.metadata.create_all(engine)
 
+    # NOTE: schema is managed by Alembic migrations, NOT create_all. Tables are
+    # never created or destroyed automatically on startup.
     app = FastAPI(title=settings.app_name, debug=settings.app_debug)
     app.state.engine = engine
     app.state.session_factory = session_factory

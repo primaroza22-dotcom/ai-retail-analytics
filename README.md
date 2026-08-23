@@ -18,10 +18,10 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 8 — Advanced Retail Analytics** (current). The backend now exposes a
-complete analytics API (event listing, zone update/disable, ongoing vs
-completed dwell sessions, and aggregation endpoints: summary, per-zone, daily,
-and ranking). The dashboard consumes these endpoints for KPIs and charts.
+**Sprint 9 — Database Migration + Backend Hardening** (current). The database
+schema is now version-controlled with Alembic (source of truth for schema, not
+`create_all`), and the backend startup no longer creates or mutates tables
+automatically.
 
 > Real-time (WebSocket), CCTV streaming, live tracking visualization, POS, and
 > forecasting are **NOT** implemented yet.
@@ -359,3 +359,47 @@ Timestamps are Unix epoch seconds (UTC). Dwell sessions are either `ongoing`
 All aggregation runs database-side (SQLAlchemy `COUNT`/`AVG`/`SUM`/`MAX`/`MIN`);
 business rules (duration derivation, ranking, filtering) live in the backend
 service layer, never in the frontend.
+
+## 18. Database Migrations + Hardening (Sprint 9)
+
+The database schema is version-controlled with Alembic. Migrations are the
+source of truth; the backend does **not** call `Base.metadata.create_all()` on
+startup and never drops or recreates tables automatically.
+
+### Configuration
+
+- `alembic.ini` holds no credentials; `sqlalchemy.url` is resolved in
+  `alembic/env.py` from the centralized `DATABASE_URL` setting (environment
+  driven).
+- `alembic/env.py` targets the real `backend.database.Base` metadata
+  (`Zone`, `ZoneEvent`, `DwellSession`).
+
+### Migration commands
+
+```powershell
+alembic upgrade head      # apply all migrations
+alembic current           # show current revision
+alembic history           # show migration chain
+alembic downgrade -1      # undo the last migration (dev only)
+alembic revision --autogenerate -m "message"   # generate a new revision (review it!)
+```
+
+### Development workflow
+
+1. Configure `.env` (copy `.env.example`, set `DATABASE_URL`).
+2. Start PostgreSQL.
+3. Run `alembic upgrade head`.
+4. Start FastAPI: `.venv\Scripts\python.exe -m uvicorn backend.main:app --reload`.
+5. Start Next.js: `cd frontend; npm run dev`.
+
+### Schema notes
+
+- `zones.id` is the primary key (and the zone identifier); `polygon` stores the
+  geometry as portable JSON (no PostGIS).
+- `zone_events.timestamp`, `dwell_sessions.enter_time`/`exit_time` are Unix
+  epoch seconds (UTC).
+- `created_at` columns are timezone-aware (`timestamptz` on PostgreSQL).
+- Indexes exist on `zone_events.(track_id, zone_id, event_type, timestamp)` and
+  `dwell_sessions.(track_id, zone_id, enter_time, status)`.
+- Ongoing dwell sessions keep `exit_time`/`duration` nullable (Sprint 8
+  semantics preserved).
