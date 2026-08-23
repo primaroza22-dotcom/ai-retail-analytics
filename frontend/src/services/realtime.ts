@@ -18,13 +18,18 @@ export type RealtimeEventType =
   | "dwell_updated"
   | "dwell_completed"
   | "analytics_update"
-  | "system_status";
+  | "system_status"
+  | "camera_connected"
+  | "camera_disconnected"
+  | "camera_error"
+  | "camera_reconnecting";
 
 export interface RealtimeEvent {
   type: RealtimeEventType;
   version: number;
   timestamp: number;
   data: Record<string, unknown>;
+  camera_id?: string;
 }
 
 export type ConnectionStatus =
@@ -87,6 +92,13 @@ export class RealtimeClient {
       this.ws = null;
     }
     this.onStatus("disconnected");
+  }
+
+  subscribe(cameraIds: string[] | null): void {
+    const payload = { type: "subscribe", camera_ids: cameraIds ?? [] };
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(payload));
+    }
   }
 
   private open(): void {

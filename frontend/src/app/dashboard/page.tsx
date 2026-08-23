@@ -1,6 +1,7 @@
 "use client";
 
 import { BackendStatus } from "@/components/dashboard/BackendStatus";
+import { CameraPanel } from "@/components/dashboard/CameraPanel";
 import { DailyChart } from "@/components/dashboard/DailyChart";
 import { DataTable } from "@/components/dashboard/DataTable";
 import { DwellChart } from "@/components/dashboard/DwellChart";
@@ -44,7 +45,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <LivePanel />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <CameraPanel />
+        <LivePanel />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard

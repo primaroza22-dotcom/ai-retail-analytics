@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from .config import Settings, get_settings
 from .database import create_engine_from_url, create_session_factory
 from .exceptions import ConflictError, NotFoundError, ValidationError
+from .pipeline import PipelineManager
 from .realtime import ConnectionManager, Event, EventBus, EventType
 from .routers import router
 
@@ -38,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     event_bus = EventBus()
     connection_manager = ConnectionManager()
     event_bus.subscribe(connection_manager.on_event)
+    pipeline_manager = PipelineManager(publish=event_bus.publish)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -51,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for task in (bus_task, heartbeat_task):
                 task.cancel()
             await asyncio.gather(bus_task, heartbeat_task, return_exceptions=True)
+            pipeline_manager.stop_all()
 
     # NOTE: schema is managed by Alembic migrations, NOT create_all. Tables are
     # never created or destroyed automatically on startup.
@@ -60,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.event_bus = event_bus
     app.state.connection_manager = connection_manager
+    app.state.pipeline_manager = pipeline_manager
 
     app.add_middleware(
         CORSMiddleware,

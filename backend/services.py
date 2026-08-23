@@ -1,6 +1,6 @@
 """Business-logic services.
 
-Services contain the domain rules (uniqueness, zone existence, duration
+Services contain the domain rules (uniqueness, camera/zone existence, duration
 derivation, filtering, pagination, aggregation, ranking) and delegate
 persistence to repositories. Route handlers only translate HTTP into service
 calls and back.
@@ -12,11 +12,14 @@ import time
 from datetime import datetime, timezone
 
 from .exceptions import ConflictError, NotFoundError
-from .models import STATUS_COMPLETED, STATUS_ONGOING, DwellSession, Zone, ZoneEvent
+from .models import STATUS_COMPLETED, STATUS_ONGOING, Camera, DwellSession, Zone, ZoneEvent
 from .realtime import Event, EventBus, EventType
-from .repositories import DwellRepository, EventRepository, ZoneRepository
+from .repositories import CameraRepository, DwellRepository, EventRepository, ZoneRepository
 from .schemas import (
     AnalyticsSummary,
+    CameraCreate,
+    CameraRead,
+    CameraUpdate,
     DailyAnalytics,
     DwellListResponse,
     DwellSessionCreate,
@@ -32,26 +35,102 @@ from .schemas import (
 )
 
 
+class CameraService:
+    """Manages the camera registry."""
+
+    def __init__(self, cameras: CameraRepository) -> None:
+        self._cameras = cameras
+
+    def create(self, data: CameraCreate) -> CameraRead:
+        if self._cameras.get(data.id) is not None:
+            raise ConflictError(f"Camera already exists: {data.id}")
+        camera = Camera(
+            id=data.id,
+            name=data.name,
+            description=data.description,
+            source_type=data.source_type,
+            source_url=data.source_url,
+            enabled=data.enabled,
+            location=data.location,
+        )
+        self._cameras.add(camera)
+        return CameraRead.model_validate(camera)
+
+    def list(self) -> list[CameraRead]:
+        return [CameraRead.model_validate(camera) for camera in self._cameras.list()]
+
+    def get(self, camera_id: str) -> CameraRead:
+        return CameraRead.model_validate(self._require(camera_id))
+
+    def update(self, camera_id: str, data: CameraUpdate) -> CameraRead:
+        camera = self._require(camera_id)
+        if data.name is not None:
+            camera.name = data.name
+        if data.description is not None:
+            camera.description = data.description
+        if data.source_type is not None:
+            camera.source_type = data.source_type
+        if data.source_url is not None:
+            camera.source_url = data.source_url
+        if data.enabled is not None:
+            camera.enabled = data.enabled
+        if data.location is not None:
+            camera.location = data.location
+        return CameraRead.model_validate(camera)
+
+    def disable(self, camera_id: str) -> CameraRead:
+        """Soft-delete a camera (preserves historical references)."""
+        camera = self._require(camera_id)
+        camera.enabled = False
+        return CameraRead.model_validate(camera)
+
+    def _require(self, camera_id: str) -> Camera:
+        camera = self._cameras.get(camera_id)
+        if camera is None:
+            raise NotFoundError(f"Unknown camera: {camera_id}")
+        return camera
+
+
 class ZoneService:
     """Manages zone configuration."""
 
-    def __init__(self, zones: ZoneRepository) -> None:
+    def __init__(
+        self,
+        zones: ZoneRepository,
+        cameras: CameraRepository | None = None,
+    ) -> None:
         self._zones = zones
+        self._cameras = cameras
+
+    def _require_camera(self, camera_id: str | None) -> None:
+        if camera_id is not None and self._cameras is not None:
+            if self._cameras.get(camera_id) is None:
+                raise NotFoundError(f"Unknown camera: {camera_id}")
 
     def create(self, data: ZoneCreate) -> ZoneRead:
         if self._zones.get(data.id) is not None:
             raise ConflictError(f"Zone already exists: {data.id}")
-        zone = Zone(id=data.id, name=data.name, polygon=data.polygon, enabled=data.enabled)
+        self._require_camera(data.camera_id)
+        zone = Zone(
+            id=data.id,
+            name=data.name,
+            camera_id=data.camera_id,
+            polygon=data.polygon,
+            enabled=data.enabled,
+        )
         self._zones.add(zone)
         return ZoneRead.model_validate(zone)
 
-    def list(self) -> list[ZoneRead]:
-        return [ZoneRead.model_validate(zone) for zone in self._zones.list()]
+    def list(self, camera_id: str | None = None) -> list[ZoneRead]:
+        return [ZoneRead.model_validate(zone) for zone in self._zones.list(camera_id)]
 
     def update(self, zone_id: str, data: ZoneUpdate) -> ZoneRead:
         zone = self._zones.get(zone_id)
         if zone is None:
             raise NotFoundError(f"Unknown zone: {zone_id}")
+        if data.camera_id is not None:
+            self._require_camera(data.camera_id)
+            zone.camera_id = data.camera_id
         if data.name is not None:
             zone.name = data.name
         if data.polygon is not None:
@@ -76,22 +155,25 @@ class AnalyticsService:
         self._dwell = dwell
         self._bus = bus
 
-    def _require_zone(self, zone_id: str) -> None:
-        if self._zones.get(zone_id) is None:
+    def _get_zone(self, zone_id: str) -> Zone:
+        zone = self._zones.get(zone_id)
+        if zone is None:
             raise NotFoundError(f"Unknown zone: {zone_id}")
+        return zone
 
-    def _publish(self, event_type: EventType, data: dict) -> None:
+    def _publish(self, event_type: EventType, data: dict, camera_id: str | None) -> None:
         if self._bus is not None:
-            self._bus.publish(Event(event_type, time.time(), data))
+            self._bus.publish(Event(event_type, time.time(), data, camera_id=camera_id))
 
     # --- Events ---
 
     def record_events(self, items: list[ZoneEventCreate]) -> list[ZoneEventRead]:
         models = []
         for item in items:
-            self._require_zone(item.zone_id)
+            zone = self._get_zone(item.zone_id)
             models.append(
                 ZoneEvent(
+                    camera_id=zone.camera_id,
                     track_id=item.track_id,
                     zone_id=item.zone_id,
                     event_type=item.event_type,
@@ -110,6 +192,7 @@ class AnalyticsService:
                     "zone_id": model.zone_id,
                     "timestamp": model.timestamp,
                 },
+                model.camera_id,
             )
         return [ZoneEventRead.model_validate(model) for model in models]
 
@@ -121,6 +204,7 @@ class AnalyticsService:
         zone_id: str | None,
         event_type: str | None,
         track_id: int | None,
+        camera_id: str | None,
         start_time: float | None,
         end_time: float | None,
     ) -> EventListResponse:
@@ -128,6 +212,7 @@ class AnalyticsService:
             zone_id=zone_id,
             event_type=event_type,
             track_id=track_id,
+            camera_id=camera_id,
             start_time=start_time,
             end_time=end_time,
         )
@@ -139,6 +224,7 @@ class AnalyticsService:
                 zone_id=zone_id,
                 event_type=event_type,
                 track_id=track_id,
+                camera_id=camera_id,
                 start_time=start_time,
                 end_time=end_time,
             )
@@ -150,7 +236,7 @@ class AnalyticsService:
     def record_sessions(self, items: list[DwellSessionCreate]) -> list[DwellSessionRead]:
         models = []
         for item in items:
-            self._require_zone(item.zone_id)
+            zone = self._get_zone(item.zone_id)
             if item.exit_time is not None:
                 status = STATUS_COMPLETED
                 duration = item.exit_time - item.enter_time
@@ -159,6 +245,7 @@ class AnalyticsService:
                 duration = None
             models.append(
                 DwellSession(
+                    camera_id=zone.camera_id,
                     track_id=item.track_id,
                     zone_id=item.zone_id,
                     enter_time=item.enter_time,
@@ -177,6 +264,7 @@ class AnalyticsService:
                         "zone_id": model.zone_id,
                         "enter_time": model.enter_time,
                     },
+                    model.camera_id,
                 )
             else:
                 self._publish(
@@ -188,6 +276,7 @@ class AnalyticsService:
                         "exit_time": model.exit_time,
                         "duration": model.duration,
                     },
+                    model.camera_id,
                 )
         return [self._to_read(model, item.enter_time) for model, item in zip(models, items)]
 
@@ -199,6 +288,7 @@ class AnalyticsService:
             duration = session.duration
         return DwellSessionRead(
             id=session.id,
+            camera_id=session.camera_id,
             track_id=session.track_id,
             zone_id=session.zone_id,
             enter_time=session.enter_time,
@@ -215,6 +305,7 @@ class AnalyticsService:
         zone_id: str | None,
         track_id: int | None,
         status: str | None,
+        camera_id: str | None,
         start_time: float | None,
         end_time: float | None,
         min_duration: float | None,
@@ -226,6 +317,7 @@ class AnalyticsService:
             zone_id=zone_id,
             track_id=track_id,
             status=status,
+            camera_id=camera_id,
             start_time=start_time,
             end_time=end_time,
         )
@@ -237,6 +329,7 @@ class AnalyticsService:
                 zone_id=zone_id,
                 track_id=track_id,
                 status=status,
+                camera_id=camera_id,
                 start_time=start_time,
                 end_time=end_time,
                 min_duration=min_duration,
@@ -247,17 +340,23 @@ class AnalyticsService:
 
     # --- Aggregates ---
 
-    def summary(self, start_time: float | None, end_time: float | None) -> AnalyticsSummary:
-        return AnalyticsSummary(**self._dwell.summary(start_time, end_time))
+    def summary(
+        self, start_time: float | None, end_time: float | None, camera_id: str | None
+    ) -> AnalyticsSummary:
+        return AnalyticsSummary(**self._dwell.summary(start_time, end_time, camera_id))
 
     def zone_analytics(
-        self, start_time: float | None, end_time: float | None
+        self, start_time: float | None, end_time: float | None, camera_id: str | None
     ) -> list[ZoneAnalytics]:
-        return [ZoneAnalytics(**row) for row in self._dwell.by_zone(start_time, end_time)]
+        return [
+            ZoneAnalytics(**row) for row in self._dwell.by_zone(start_time, end_time, camera_id)
+        ]
 
-    def daily(self, start_time: float | None, end_time: float | None) -> list[DailyAnalytics]:
+    def daily(
+        self, start_time: float | None, end_time: float | None, camera_id: str | None
+    ) -> list[DailyAnalytics]:
         result = []
-        for row in self._dwell.daily(start_time, end_time):
+        for row in self._dwell.daily(start_time, end_time, camera_id):
             date = datetime.fromtimestamp(row["day"], tz=timezone.utc).date().isoformat()
             result.append(
                 DailyAnalytics(
@@ -270,9 +369,9 @@ class AnalyticsService:
         return result
 
     def zone_ranking(
-        self, metric: str, start_time: float | None, end_time: float | None
+        self, metric: str, start_time: float | None, end_time: float | None, camera_id: str | None
     ) -> list[ZoneRanking]:
-        rows = self._dwell.by_zone(start_time, end_time)
+        rows = self._dwell.by_zone(start_time, end_time, camera_id)
         if metric == "total_dwell":
             key = lambda row: row["total_dwell_seconds"]  # noqa: E731
         else:

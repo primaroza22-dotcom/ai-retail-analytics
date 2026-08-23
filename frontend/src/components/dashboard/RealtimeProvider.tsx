@@ -22,6 +22,7 @@ interface RealtimeContextValue {
   status: ConnectionStatus;
   events: RealtimeEvent[];
   counters: LiveCounters;
+  selectCameras: (cameraIds: string[] | null) => void;
 }
 
 const CONTROL_TYPES = new Set(["connection", "heartbeat"]);
@@ -41,6 +42,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [events, setEvents] = useState<RealtimeEvent[]>([]);
   const [counters, setCounters] = useState<LiveCounters>(EMPTY_COUNTERS);
   const activeTracksRef = useRef<Set<unknown>>(new Set());
+  const clientRef = useRef<RealtimeClient | null>(null);
 
   const handleEvent = useCallback((event: RealtimeEvent) => {
     if (CONTROL_TYPES.has(event.type)) return;
@@ -81,11 +83,22 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const client = new RealtimeClient(handleEvent, handleStatus);
+    clientRef.current = client;
     client.connect();
-    return () => client.disconnect();
+    return () => {
+      client.disconnect();
+      clientRef.current = null;
+    };
   }, [handleEvent, handleStatus]);
 
-  const value: RealtimeContextValue = { status, events, counters };
+  const selectCameras = useCallback((cameraIds: string[] | null) => {
+    clientRef.current?.subscribe(cameraIds);
+    activeTracksRef.current.clear();
+    setEvents([]);
+    setCounters(EMPTY_COUNTERS);
+  }, []);
+
+  const value: RealtimeContextValue = { status, events, counters, selectCameras };
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }
 

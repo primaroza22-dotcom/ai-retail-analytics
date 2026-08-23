@@ -26,6 +26,10 @@ class EventType(str, Enum):
     DWELL_COMPLETED = "dwell_completed"
     ANALYTICS_UPDATE = "analytics_update"
     SYSTEM_STATUS = "system_status"
+    CAMERA_CONNECTED = "camera_connected"
+    CAMERA_DISCONNECTED = "camera_disconnected"
+    CAMERA_ERROR = "camera_error"
+    CAMERA_RECONNECTING = "camera_reconnecting"
 
 
 @dataclass(frozen=True)
@@ -36,11 +40,15 @@ class Event:
     timestamp: float
     data: dict[str, Any] = field(default_factory=dict)
     version: int = 1
+    camera_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "type": self.type.value,
             "version": self.version,
             "timestamp": self.timestamp,
             "data": self.data,
         }
+        if self.camera_id is not None:
+            payload["camera_id"] = self.camera_id
+        return payload

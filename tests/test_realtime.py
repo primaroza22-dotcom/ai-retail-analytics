@@ -24,6 +24,21 @@ ZONE = {
     "polygon": [[0, 0], [100, 0], [100, 100], [0, 100]],
 }
 
+CAM_A = {"id": "cam-a", "name": "Camera A", "source_type": "test"}
+CAM_B = {"id": "cam-b", "name": "Camera B", "source_type": "test"}
+ZONE_A = {
+    "id": "zone-a",
+    "name": "Zone A",
+    "camera_id": "cam-a",
+    "polygon": [[0, 0], [100, 0], [100, 100], [0, 100]],
+}
+ZONE_B = {
+    "id": "zone-b",
+    "name": "Zone B",
+    "camera_id": "cam-b",
+    "polygon": [[0, 0], [100, 0], [100, 100], [0, 100]],
+}
+
 
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
@@ -214,3 +229,71 @@ def test_websocket_receives_dwell_started_event(client: TestClient) -> None:
         event = ws.receive_json()
         assert event["type"] == "dwell_started"
         assert event["data"]["track_id"] == 9
+
+
+# --- Camera-aware real-time events ---
+
+
+def test_websocket_event_includes_camera_id(client: TestClient) -> None:
+    client.post("/cameras", json=CAM_A)
+    client.post("/zones", json=ZONE_A)
+    with client.websocket_connect("/ws/events") as ws:
+        assert ws.receive_json()["type"] == "connection"
+
+        client.post(
+            "/events",
+            json=[{"track_id": 1, "zone_id": "zone-a", "event_type": "enter", "timestamp": 10.0}],
+        )
+
+        event = ws.receive_json()
+        assert event["camera_id"] == "cam-a"
+        assert event["type"] == "zone_enter"
+
+
+def test_websocket_receives_all_cameras_by_default(client: TestClient) -> None:
+    client.post("/cameras", json=CAM_A)
+    client.post("/cameras", json=CAM_B)
+    client.post("/zones", json=ZONE_A)
+    client.post("/zones", json=ZONE_B)
+    with client.websocket_connect("/ws/events") as ws:
+        assert ws.receive_json()["type"] == "connection"
+
+        client.post(
+            "/events",
+            json=[{"track_id": 1, "zone_id": "zone-a", "event_type": "enter", "timestamp": 10.0}],
+        )
+        client.post(
+            "/events",
+            json=[{"track_id": 2, "zone_id": "zone-b", "event_type": "enter", "timestamp": 11.0}],
+        )
+
+        cameras = {ws.receive_json()["camera_id"], ws.receive_json()["camera_id"]}
+        assert cameras == {"cam-a", "cam-b"}
+
+
+def test_websocket_camera_subscription_filters(client: TestClient) -> None:
+    client.post("/cameras", json=CAM_A)
+    client.post("/cameras", json=CAM_B)
+    client.post("/zones", json=ZONE_A)
+    client.post("/zones", json=ZONE_B)
+
+    with client.websocket_connect("/ws/events") as ws_a, client.websocket_connect("/ws/events") as ws_b:
+        assert ws_a.receive_json()["type"] == "connection"
+        assert ws_b.receive_json()["type"] == "connection"
+
+        ws_a.send_json({"type": "subscribe", "camera_ids": ["cam-a"]})
+        ws_b.send_json({"type": "subscribe", "camera_ids": ["cam-b"]})
+
+        client.post(
+            "/events",
+            json=[{"track_id": 1, "zone_id": "zone-a", "event_type": "enter", "timestamp": 10.0}],
+        )
+        client.post(
+            "/events",
+            json=[{"track_id": 2, "zone_id": "zone-b", "event_type": "enter", "timestamp": 11.0}],
+        )
+
+        event_a = ws_a.receive_json()
+        event_b = ws_b.receive_json()
+        assert event_a["camera_id"] == "cam-a"
+        assert event_b["camera_id"] == "cam-b"

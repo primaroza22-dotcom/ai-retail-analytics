@@ -6,6 +6,7 @@ No business logic or database access lives here.
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Literal
 
@@ -13,10 +14,14 @@ from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisc
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from .deps import get_analytics_service, get_zone_service
+from .deps import get_analytics_service, get_camera_service, get_zone_service
 from .realtime import Event, EventType
 from .schemas import (
     AnalyticsSummary,
+    CameraCreate,
+    CameraRead,
+    CameraStatusRead,
+    CameraUpdate,
     DailyAnalytics,
     DwellListResponse,
     DwellSessionCreate,
@@ -30,7 +35,7 @@ from .schemas import (
     ZoneRead,
     ZoneUpdate,
 )
-from .services import AnalyticsService, ZoneService
+from .services import AnalyticsService, CameraService, ZoneService
 
 router = APIRouter()
 
@@ -48,7 +53,7 @@ def health(request: Request) -> JSONResponse:
 
 @router.websocket("/ws/events")
 async def websocket_events(websocket: WebSocket) -> None:
-    """Real-time event stream (internal endpoint, no auth yet)."""
+    """Real-time event stream with per-client camera subscription."""
     manager = websocket.app.state.connection_manager
     await manager.connect(websocket)
     await manager.send_personal(
@@ -57,11 +62,80 @@ async def websocket_events(websocket: WebSocket) -> None:
     )
     try:
         while True:
-            await websocket.receive_text()
+            message = await websocket.receive_text()
+            _handle_subscription(manager, websocket, message)
     except WebSocketDisconnect:
         pass
     finally:
         manager.disconnect(websocket)
+
+
+def _handle_subscription(manager, websocket: WebSocket, message: str) -> None:
+    try:
+        parsed = json.loads(message)
+    except json.JSONDecodeError:
+        return
+    if not isinstance(parsed, dict):
+        return
+    message_type = parsed.get("type")
+    camera_ids = parsed.get("camera_ids")
+    if message_type == "subscribe":
+        if isinstance(camera_ids, list):
+            manager.subscribe(websocket, [str(c) for c in camera_ids])
+        else:
+            manager.subscribe(websocket, None)
+    elif message_type == "unsubscribe":
+        if isinstance(camera_ids, list):
+            manager.unsubscribe(websocket, [str(c) for c in camera_ids])
+
+
+# --- Cameras ---
+
+
+@router.post(
+    "/cameras",
+    response_model=CameraRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["cameras"],
+)
+def create_camera(payload: CameraCreate, camera_service=Depends(get_camera_service)) -> CameraRead:
+    return camera_service.create(payload)
+
+
+@router.get("/cameras", response_model=list[CameraRead], tags=["cameras"])
+def list_cameras(camera_service=Depends(get_camera_service)) -> list[CameraRead]:
+    return camera_service.list()
+
+
+@router.get("/cameras/{camera_id}", response_model=CameraRead, tags=["cameras"])
+def get_camera(camera_id: str, camera_service=Depends(get_camera_service)) -> CameraRead:
+    return camera_service.get(camera_id)
+
+
+@router.put("/cameras/{camera_id}", response_model=CameraRead, tags=["cameras"])
+def update_camera(
+    camera_id: str,
+    payload: CameraUpdate,
+    camera_service=Depends(get_camera_service),
+) -> CameraRead:
+    return camera_service.update(camera_id, payload)
+
+
+@router.delete("/cameras/{camera_id}", response_model=CameraRead, tags=["cameras"])
+def delete_camera(camera_id: str, camera_service=Depends(get_camera_service)) -> CameraRead:
+    """Soft-delete (disable) a camera; historical references are preserved."""
+    return camera_service.disable(camera_id)
+
+
+@router.get("/cameras/{camera_id}/status", response_model=CameraStatusRead, tags=["cameras"])
+def camera_status(
+    camera_id: str,
+    request: Request,
+    camera_service=Depends(get_camera_service),
+) -> CameraStatusRead:
+    camera_service.get(camera_id)  # 404 if unknown
+    status_value = request.app.state.pipeline_manager.status(camera_id).value
+    return CameraStatusRead(camera_id=camera_id, status=status_value)
 
 
 # --- Zones ---
@@ -78,8 +152,11 @@ def create_zone(payload: ZoneCreate, zone_service=Depends(get_zone_service)) -> 
 
 
 @router.get("/zones", response_model=list[ZoneRead], tags=["zones"])
-def list_zones(zone_service=Depends(get_zone_service)) -> list[ZoneRead]:
-    return zone_service.list()
+def list_zones(
+    camera_id: str | None = None,
+    zone_service=Depends(get_zone_service),
+) -> list[ZoneRead]:
+    return zone_service.list(camera_id)
 
 
 @router.put("/zones/{zone_id}", response_model=ZoneRead, tags=["zones"])
@@ -113,6 +190,7 @@ def list_events(
     zone_id: str | None = None,
     event_type: str | None = None,
     track_id: int | None = None,
+    camera_id: str | None = None,
     start_time: float | None = None,
     end_time: float | None = None,
     service: AnalyticsService = Depends(get_analytics_service),
@@ -123,6 +201,7 @@ def list_events(
         zone_id=zone_id,
         event_type=event_type,
         track_id=track_id,
+        camera_id=camera_id,
         start_time=start_time,
         end_time=end_time,
     )
@@ -154,6 +233,7 @@ def dwell_sessions(
     zone_id: str | None = None,
     track_id: int | None = None,
     status: Literal["ongoing", "completed"] | None = None,
+    camera_id: str | None = None,
     start_time: float | None = None,
     end_time: float | None = None,
     min_duration: float | None = None,
@@ -167,6 +247,7 @@ def dwell_sessions(
         zone_id=zone_id,
         track_id=track_id,
         status=status,
+        camera_id=camera_id,
         start_time=start_time,
         end_time=end_time,
         min_duration=min_duration,
@@ -179,18 +260,20 @@ def dwell_sessions(
 def analytics_summary(
     start_time: float | None = None,
     end_time: float | None = None,
+    camera_id: str | None = None,
     service: AnalyticsService = Depends(get_analytics_service),
 ) -> AnalyticsSummary:
-    return service.summary(start_time, end_time)
+    return service.summary(start_time, end_time, camera_id)
 
 
 @router.get("/analytics/zones", response_model=list[ZoneAnalytics], tags=["analytics"])
 def zone_analytics(
     start_time: float | None = None,
     end_time: float | None = None,
+    camera_id: str | None = None,
     service: AnalyticsService = Depends(get_analytics_service),
 ) -> list[ZoneAnalytics]:
-    return service.zone_analytics(start_time, end_time)
+    return service.zone_analytics(start_time, end_time, camera_id)
 
 
 @router.get(
@@ -202,15 +285,17 @@ def zone_ranking(
     metric: Literal["average_dwell", "total_dwell"] = "average_dwell",
     start_time: float | None = None,
     end_time: float | None = None,
+    camera_id: str | None = None,
     service: AnalyticsService = Depends(get_analytics_service),
 ) -> list[ZoneRanking]:
-    return service.zone_ranking(metric, start_time, end_time)
+    return service.zone_ranking(metric, start_time, end_time, camera_id)
 
 
 @router.get("/analytics/daily", response_model=list[DailyAnalytics], tags=["analytics"])
 def daily_analytics(
     start_time: float | None = None,
     end_time: float | None = None,
+    camera_id: str | None = None,
     service: AnalyticsService = Depends(get_analytics_service),
 ) -> list[DailyAnalytics]:
-    return service.daily(start_time, end_time)
+    return service.daily(start_time, end_time, camera_id)

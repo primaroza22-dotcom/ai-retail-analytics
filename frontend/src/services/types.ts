@@ -5,9 +5,46 @@
  * database, YOLO, tracking, or analytics business logic.
  */
 
+export interface Camera {
+  id: string;
+  name: string;
+  description: string | null;
+  source_type: string;
+  source_url: string | null;
+  enabled: boolean;
+  location: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CameraCreate {
+  id: string;
+  name: string;
+  description?: string | null;
+  source_type?: string;
+  source_url?: string | null;
+  enabled?: boolean;
+  location?: string | null;
+}
+
+export interface CameraUpdate {
+  name?: string;
+  description?: string | null;
+  source_type?: string;
+  source_url?: string | null;
+  enabled?: boolean;
+  location?: string | null;
+}
+
+export interface CameraStatus {
+  camera_id: string;
+  status: string;
+}
+
 export interface Zone {
   id: string;
   name: string;
+  camera_id: string | null;
   polygon: number[][];
   enabled: boolean;
   created_at: string;
@@ -30,6 +67,7 @@ export type ZoneEventType = "enter" | "exit";
 
 export interface ZoneEvent {
   id: number;
+  camera_id: string | null;
   track_id: number;
   zone_id: string;
   event_type: string;
@@ -53,6 +91,7 @@ export interface EventListResponse {
 
 export interface DwellSession {
   id: number;
+  camera_id: string | null;
   track_id: number;
   zone_id: string;
   enter_time: number;
@@ -121,6 +160,7 @@ export interface EventQuery {
   zone_id?: string;
   event_type?: string;
   track_id?: number;
+  camera_id?: string;
   start_time?: number;
   end_time?: number;
 }
@@ -131,6 +171,7 @@ export interface DwellQuery {
   zone_id?: string;
   track_id?: number;
   status?: "ongoing" | "completed";
+  camera_id?: string;
   start_time?: number;
   end_time?: number;
   min_duration?: number;
@@ -141,4 +182,5 @@ export interface DwellQuery {
 export interface TimeRangeQuery {
   start_time?: number;
   end_time?: number;
+  camera_id?: string;
 }

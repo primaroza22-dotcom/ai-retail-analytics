@@ -18,13 +18,14 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 10 — Real-Time WebSocket + Live Analytics** (current). The backend
-publishes real-time events over a WebSocket endpoint (`/ws/events`) backed by an
-event bus, and the dashboard consumes live events (connection status, live
-counters, live event feed) without polling REST endpoints.
+**Sprint 11 — Multi-Camera Architecture** (current). The backend now has a
+camera registry, camera-scoped zones/events/dwell sessions (every event is
+traceable to its `camera_id`), an isolated per-camera worker pipeline with a
+deterministic test camera, camera lifecycle events, and WebSocket camera
+filtering. The dashboard supports camera selection and per-camera live analytics.
 
-> POS, forecasting, live CCTV streaming, and multi-camera architecture are
-> **NOT** implemented yet.
+> POS, forecasting, production deployment, and advanced camera orchestration
+> are **NOT** implemented yet.
 
 ## 4. Architecture
 
@@ -466,3 +467,103 @@ changing producers or the connection manager.
 .venv\Scripts\python.exe -m pytest           # incl. tests/test_realtime.py
 cd frontend; npm run lint; npm run build
 ```
+
+## 20. Multi-Camera Architecture (Sprint 11)
+
+The platform now supports many cameras, each with an isolated pipeline. Every
+event, zone, and dwell session is traceable to its `camera_id`.
+
+```
+┌───────────────┐
+│ Camera Registry│
+└───────┬───────┘
+   ┌────┼────┐
+ Camera 1  Camera N
+   │          │
+  RTSP       RTSP
+   │          │
+ YOLO       YOLO
+   │          │
+Tracking   Tracking
+   │          │
+Zone/Dwell Zone/Dwell
+   └────┼────┘
+        ↓
+   Event Bus
+   ┌───┴───┐
+PostgreSQL  WebSocket → Dashboard
+```
+
+### Camera model
+
+Cameras are stored in the `cameras` table and managed via REST. Fields:
+`id`, `name`, `description`, `source_type` (`rtsp`/`onvif`/`file`/`test`),
+`source_url`, `enabled`, `location`, `created_at`, `updated_at`. Credentials are
+never stored in plaintext (they are resolved from environment, as in Sprint 2).
+
+### Camera API
+
+| Method | Path                         | Description                    |
+| ------ | ---------------------------- | ------------------------------ |
+| GET    | `/cameras`                   | List cameras                   |
+| POST   | `/cameras`                   | Create a camera                |
+| GET    | `/cameras/{id}`              | Get one camera                 |
+| PUT    | `/cameras/{id}`              | Update a camera                |
+| DELETE | `/cameras/{id}`              | Soft-delete (disable) a camera |
+| GET    | `/cameras/{id}/status`       | Runtime status (in-memory)     |
+
+### Track identity
+
+A `track_id` is only meaningful within a single camera. The logical identity is
+`(camera_id, track_id)`. Track IDs are **not** rewritten; events carry both
+`camera_id` and `track_id`, so the same numeric track id on two cameras never
+collides.
+
+### Zone-camera relationship
+
+A zone belongs to a camera (`zones.camera_id`). Zone events and dwell sessions
+are denormalized with the zone's `camera_id` at ingest time, so historical
+analytics stay correct even if a zone is later reassigned.
+
+### Camera worker + test camera
+
+- `backend/pipeline` defines `CameraSource` (with `TestCameraSource`), a
+  `CameraWorker` that orchestrates source → detection → tracking → zone →
+  dwell → events, and a `PipelineManager` that runs one isolated thread per
+  camera. One camera's failure never stops another or the app.
+- Runtime states: `unknown`, `starting`, `connected`, `running`,
+  `reconnecting`, `disconnected`, `error`, `stopped`.
+- RTSP reconnect is bounded (Sprint 2 `CameraStream`, 5s default interval).
+
+### Real-time events
+
+The event envelope now includes a top-level `camera_id` for camera-originated
+events. Camera lifecycle events are emitted on the bus: `camera_connected`,
+`camera_disconnected`, `camera_error`, `camera_reconnecting`.
+
+### WebSocket camera filtering
+
+Clients send subscription messages over `/ws/events`:
+
+```json
+{"type": "subscribe", "camera_ids": ["camera-01"]}   // empty list = all cameras
+{"type": "unsubscribe", "camera_ids": ["camera-01"]}
+```
+
+The dashboard camera selector sends these subscriptions; selecting "All
+Cameras" subscribes to everything.
+
+### Analytics
+
+All analytics endpoints (`/analytics/summary`, `/analytics/zones`,
+`/analytics/daily`, `/analytics/zones/ranking`, `/analytics/dwell`,
+`/events`) accept an optional `camera_id` filter. Existing filters remain
+unchanged.
+
+### Known limitations
+
+- No live camera feed is wired in development: the worker pipeline is exercised
+  via `TestCameraSource`; real RTSP/ONVIF/YOLO wiring is a follow-up.
+- `camera_reconnecting` is defined but not yet emitted (RTSP reconnect runs
+  inside `CameraStream`).
+- Camera runtime status is in-memory (not persisted).

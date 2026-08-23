@@ -12,8 +12,8 @@ from collections.abc import Iterator
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
-from .repositories import DwellRepository, EventRepository, ZoneRepository
-from .services import AnalyticsService, ZoneService
+from .repositories import CameraRepository, DwellRepository, EventRepository, ZoneRepository
+from .services import AnalyticsService, CameraService, ZoneService
 
 
 def get_session(request: Request) -> Iterator[Session]:
@@ -30,7 +30,11 @@ def get_session(request: Request) -> Iterator[Session]:
 
 
 def get_zone_service(session: Session = Depends(get_session)) -> ZoneService:
-    return ZoneService(ZoneRepository(session))
+    return ZoneService(ZoneRepository(session), CameraRepository(session))
+
+
+def get_camera_service(session: Session = Depends(get_session)) -> CameraService:
+    return CameraService(CameraRepository(session))
 
 
 def get_analytics_service(request: Request, session: Session = Depends(get_session)) -> AnalyticsService:

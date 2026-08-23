@@ -10,6 +10,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+SOURCE_TYPES = {"rtsp", "onvif", "file", "test"}
+
 
 def _validate_polygon(value: list[list[float]]) -> list[list[float]]:
     if len(value) < 3:
@@ -25,6 +27,7 @@ def _validate_polygon(value: list[list[float]]) -> list[list[float]]:
 class ZoneCreate(BaseModel):
     id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=256)
+    camera_id: str | None = None
     polygon: list[list[float]]
     enabled: bool = True
 
@@ -36,6 +39,7 @@ class ZoneCreate(BaseModel):
 
 class ZoneUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
+    camera_id: str | None = None
     polygon: list[list[float]] | None = None
     enabled: bool | None = None
 
@@ -48,8 +52,13 @@ class ZoneUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _at_least_one_field(self) -> ZoneUpdate:
-        if self.name is None and self.polygon is None and self.enabled is None:
-            raise ValueError("at least one of name, polygon, enabled must be provided")
+        if (
+            self.name is None
+            and self.polygon is None
+            and self.enabled is None
+            and self.camera_id is None
+        ):
+            raise ValueError("at least one of name, polygon, enabled, camera_id must be provided")
         return self
 
 
@@ -58,6 +67,7 @@ class ZoneRead(BaseModel):
 
     id: str
     name: str
+    camera_id: str | None
     polygon: list[list[float]]
     enabled: bool
     created_at: datetime
@@ -74,6 +84,7 @@ class ZoneEventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    camera_id: str | None
     track_id: int
     zone_id: str
     event_type: str
@@ -105,6 +116,7 @@ class DwellSessionCreate(BaseModel):
 
 class DwellSessionRead(BaseModel):
     id: int
+    camera_id: str | None
     track_id: int
     zone_id: str
     enter_time: float
@@ -154,3 +166,55 @@ class ZoneRanking(BaseModel):
     total_sessions: int
     average_dwell_seconds: float | None
     total_dwell_seconds: float
+
+
+class CameraCreate(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=256)
+    description: str | None = None
+    source_type: str = "rtsp"
+    source_url: str | None = None
+    enabled: bool = True
+    location: str | None = None
+
+    @field_validator("source_type")
+    @classmethod
+    def _valid_source_type(cls, value: str) -> str:
+        if value not in SOURCE_TYPES:
+            raise ValueError(f"source_type must be one of {sorted(SOURCE_TYPES)}")
+        return value
+
+
+class CameraUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=256)
+    description: str | None = None
+    source_type: str | None = None
+    source_url: str | None = None
+    enabled: bool | None = None
+    location: str | None = None
+
+    @field_validator("source_type")
+    @classmethod
+    def _valid_source_type(cls, value: str | None) -> str | None:
+        if value is not None and value not in SOURCE_TYPES:
+            raise ValueError(f"source_type must be one of {sorted(SOURCE_TYPES)}")
+        return value
+
+
+class CameraRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    description: str | None
+    source_type: str
+    source_url: str | None
+    enabled: bool
+    location: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CameraStatusRead(BaseModel):
+    camera_id: str
+    status: str

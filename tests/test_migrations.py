@@ -35,9 +35,14 @@ def test_upgrade_creates_expected_schema(tmp_path: Path) -> None:
 
     engine = create_engine(url)
     tables = _table_names(engine)
-    assert {"zones", "zone_events", "dwell_sessions"} <= tables
+    assert {"zones", "zone_events", "dwell_sessions", "cameras"} <= tables
 
     inspector = inspect(engine)
+
+    for table in ("zones", "zone_events", "dwell_sessions"):
+        columns = {c["name"] for c in inspector.get_columns(table)}
+        assert "camera_id" in columns, f"missing camera_id on {table}"
+
     event_indexes = {idx["name"] for idx in inspector.get_indexes("zone_events")}
     for name in (
         "ix_zone_events_track_id",
@@ -68,10 +73,10 @@ def test_downgrade_and_reupgrade(tmp_path: Path) -> None:
 
     engine = create_engine(url)
     tables = _table_names(engine)
-    assert not {"zones", "zone_events", "dwell_sessions"} & tables
+    assert not {"zones", "zone_events", "dwell_sessions", "cameras"} & tables
     engine.dispose()
 
     command.upgrade(cfg, "head")
     engine = create_engine(url)
-    assert {"zones", "zone_events", "dwell_sessions"} <= _table_names(engine)
+    assert {"zones", "zone_events", "dwell_sessions", "cameras"} <= _table_names(engine)
     engine.dispose()

@@ -7,6 +7,10 @@
 
 import type {
   AnalyticsSummary,
+  Camera,
+  CameraCreate,
+  CameraStatus,
+  CameraUpdate,
   DailyAnalytics,
   DwellListResponse,
   DwellQuery,
@@ -93,6 +97,16 @@ function buildQuery(params: object): string {
 
 export const api = {
   health: () => request<HealthResponse>("/health"),
+
+  listCameras: () => request<Camera[]>("/cameras"),
+  createCamera: (camera: CameraCreate) =>
+    request<Camera>("/cameras", { method: "POST", body: JSON.stringify(camera) }),
+  updateCamera: (cameraId: string, update: CameraUpdate) =>
+    request<Camera>(`/cameras/${cameraId}`, { method: "PUT", body: JSON.stringify(update) }),
+  deleteCamera: (cameraId: string) =>
+    request<Camera>(`/cameras/${cameraId}`, { method: "DELETE" }),
+  getCameraStatus: (cameraId: string) =>
+    request<CameraStatus>(`/cameras/${cameraId}/status`),
 
   listZones: () => request<Zone[]>("/zones"),
   createZone: (zone: ZoneCreate) =>
