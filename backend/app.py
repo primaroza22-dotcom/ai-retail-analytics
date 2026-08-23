@@ -9,6 +9,7 @@ an in-memory SQLite database.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,16 @@ from .pipeline import PipelineManager
 from .realtime import ConnectionManager, Event, EventBus, EventType
 from .routers import router
 
+logger = logging.getLogger(__name__)
+
+
+def configure_logging(level: str) -> None:
+    """Configure production-oriented stdout logging (containers handle rotation)."""
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
 
 async def _heartbeat_loop(manager: ConnectionManager, interval: float) -> None:
     while True:
@@ -32,8 +43,14 @@ async def _heartbeat_loop(manager: ConnectionManager, interval: float) -> None:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging(settings.log_level)
 
-    engine = create_engine_from_url(settings.database_url)
+    engine = create_engine_from_url(
+        settings.database_url,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_pool_max_overflow,
+        pool_timeout=settings.database_pool_timeout,
+    )
     session_factory = create_session_factory(engine)
 
     event_bus = EventBus()
@@ -43,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        logger.info("starting up: %s (env=%s)", settings.app_name, settings.app_env)
         bus_task = asyncio.create_task(event_bus.run())
         heartbeat_task = asyncio.create_task(
             _heartbeat_loop(connection_manager, settings.websocket_heartbeat_interval)
@@ -50,10 +68,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            logger.info("shutting down")
             for task in (bus_task, heartbeat_task):
                 task.cancel()
             await asyncio.gather(bus_task, heartbeat_task, return_exceptions=True)
             pipeline_manager.stop_all()
+            engine.dispose()
+            logger.info("shutdown complete")
 
     # NOTE: schema is managed by Alembic migrations, NOT create_all. Tables are
     # never created or destroyed automatically on startup.

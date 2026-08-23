@@ -18,14 +18,14 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 13 — Forecasting + AI Analytics** (current). The backend now has a
-daily time-series aggregation layer, feature engineering, baseline + linear
-forecast models with chronological evaluation, correlation/conversion/anomaly
-analytics, and deterministic AI insights. The dashboard shows a 7-day forecast
-and AI analytics section.
+**Sprint 14 — Production Hardening + Deployment** (current). The platform has
+production configuration, corrected timezone-aware analytics, liveness/readiness
+health checks, connection pooling, graceful shutdown, production Docker
+images + Compose, and a full deployment/backup/recovery/rollback guide
+(`DEPLOYMENT.md`).
 
-> Deep learning, generative AI, autonomous decision-making, and production ML
-> deployment are **NOT** implemented yet.
+> No deployment has been executed to an external server, and no production
+> database has been created.
 
 ## 4. Architecture
 
@@ -712,5 +712,40 @@ existing `/ws/events` endpoint, published only on `/forecast/refresh`.
 
 - Forecasts are computed on demand from a small daily dataset (in-memory cache);
   no persistent model artifacts yet.
-- Non-UTC timezone aggregation is approximate at the UTC-day boundary.
 - Anomaly detection uses rolling mean/std (z-score); no advanced models.
+
+## 23. Production Hardening + Deployment (Sprint 14)
+
+The platform is packaged for production. Full details are in `DEPLOYMENT.md`.
+
+- **Configuration**: env-driven settings with DEV/TEST/PROD separation; no
+  hard-coded secrets.
+- **Timezones**: daily aggregation now uses DST-aware `zoneinfo` conversion so
+  day boundaries align to `analytics_timezone` (e.g. `Asia/Jakarta`), not UTC.
+- **Database**: PostgreSQL connection pool (size/overflow/timeout + pre-ping);
+  Alembic remains the only schema source of truth.
+- **Health**: `GET /health` (liveness), `GET /ready` (DB readiness),
+  `GET /version`, `GET /status` (DB/WS/camera metrics).
+- **Graceful shutdown**: stops camera workers, background tasks, and disposes
+  the DB engine.
+- **Docker**: `backend/Dockerfile` + `frontend/Dockerfile` + `docker-compose.yml`
+  (PostgreSQL + backend + frontend). Single backend worker (camera workers are
+  in-process).
+- **Backup/recovery/rollback**: documented in `DEPLOYMENT.md` (pg_dump /
+  pg_restore, application vs migration rollback separation).
+
+### Production health endpoints
+
+| Endpoint      | Purpose                                 |
+| ------------- | --------------------------------------- |
+| `GET /health` | Liveness (process up)                   |
+| `GET /ready`  | Readiness (database reachable)          |
+| `GET /version`| App name + version                      |
+| `GET /status` | DB status, WS clients, camera states    |
+
+### Security notes
+
+- `/ws/events` and `POST /transactions/ingest` remain internal/unauthenticated;
+  place them behind a trusted network or auth gateway.
+- Rate limiting is left to a reverse proxy / API gateway.
+- No TLS is provisioned by this repository.

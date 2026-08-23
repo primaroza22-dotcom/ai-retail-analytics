@@ -54,14 +54,42 @@ router = APIRouter()
 
 
 @router.get("/health", tags=["system"])
-def health(request: Request) -> JSONResponse:
-    """Liveness + database connectivity check (no credentials leaked)."""
+def health() -> dict:
+    """Liveness: the process is up (no dependency check)."""
+    return {"status": "ok"}
+
+
+@router.get("/ready", tags=["system"])
+def ready(request: Request) -> JSONResponse:
+    """Readiness: critical dependencies (database) are available."""
     try:
         with request.app.state.engine.connect() as connection:
             connection.execute(text("SELECT 1"))
     except Exception:
-        return JSONResponse(status_code=503, content={"status": "error"})
-    return JSONResponse(status_code=200, content={"status": "ok"})
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return JSONResponse(status_code=200, content={"status": "ready"})
+
+
+@router.get("/version", tags=["system"])
+def version(request: Request) -> dict:
+    settings = request.app.state.settings
+    return {"name": settings.app_name, "version": settings.app_version}
+
+
+@router.get("/status", tags=["system"])
+def system_status(request: Request) -> dict:
+    db_ok = True
+    try:
+        with request.app.state.engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+    return {
+        "status": "ok",
+        "database": "connected" if db_ok else "unavailable",
+        "websocket_clients": request.app.state.connection_manager.client_count,
+        "cameras": request.app.state.pipeline_manager.statuses(),
+    }
 
 
 @router.websocket("/ws/events")

@@ -20,4 +20,8 @@ pydantic-settings>=2.2
 # Sprint 9: database migrations.
 alembic>=1.13
 
+# Sprint 13/14: IANA timezone database for business-timezone analytics
+# (required on Windows; provided by the OS on most Linux distributions).
+tzdata>=2024.1
+
 # Test dependencies are declared in pyproject.toml.

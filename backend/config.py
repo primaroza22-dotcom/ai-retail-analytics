@@ -24,12 +24,18 @@ class Settings(BaseSettings):
     app_name: str = "AI Retail Analytics"
     app_env: str = "development"
     app_debug: bool = True
+    app_version: str = "0.1.0"
 
     api_host: str = "127.0.0.1"
     api_port: int = 8000
 
+    log_level: str = "INFO"
+
     # PostgreSQL in production; SQLite is used only for tests.
     database_url: str = "sqlite:///./data/arap.db"
+    database_pool_size: int = 5
+    database_pool_max_overflow: int = 10
+    database_pool_timeout: int = 30
 
     # Allowed frontend origins for CORS (development default only).
     cors_origins: list[str] = [

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -26,6 +25,8 @@ from .forecasting import (
     forecast_series,
     generate_insights,
     pearson,
+    today_date,
+    today_start_epoch,
     transaction_rate,
 )
 from .models import (
@@ -727,28 +728,17 @@ class ForecastService:
         return generate_insights(self._records(camera_id))
 
     def today(self) -> dict:
-        start = self._today_start_epoch()
+        start = today_start_epoch(self._timezone)
         records = aggregate_daily(self._session, start_time=start, tz=self._timezone)
         record = records[0] if records else None
         return {
-            "date": (datetime.fromtimestamp(start, tz=timezone.utc).date().isoformat()
-                     if self._timezone == "UTC"
-                     else datetime.fromtimestamp(start, tz=ZoneInfo(self._timezone)).date().isoformat()),
+            "date": today_date(self._timezone),
             "transactions": int(record.transactions) if record else 0,
             "net_sales": float(record.net_sales) if record else 0.0,
             "items_sold": float(record.items_sold) if record else 0.0,
             "traffic": float(record.traffic) if record else 0.0,
             "avg_transaction_value": record.avg_transaction_value if record else None,
         }
-
-    def _today_start_epoch(self) -> float:
-        if self._timezone == "UTC":
-            now = datetime.now(timezone.utc)
-            start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-            return start.timestamp()
-        now = datetime.now(ZoneInfo(self._timezone))
-        start = datetime(now.year, now.month, now.day, tzinfo=now.tzinfo)
-        return start.timestamp()
 
     def refresh(self) -> dict:
         """Recompute forecasts/insights/anomalies and publish real-time events."""

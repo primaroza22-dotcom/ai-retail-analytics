@@ -107,3 +107,22 @@ def test_cors_allows_development_origin(client: TestClient) -> None:
 def test_cors_blocks_unknown_origin(client: TestClient) -> None:
     resp = client.get("/health", headers={"Origin": "http://evil.example.com"})
     assert "access-control-allow-origin" not in resp.headers
+
+
+def test_ready_endpoint(client: TestClient) -> None:
+    resp = client.get("/ready")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ready"}
+
+
+def test_version_endpoint(client: TestClient) -> None:
+    body = client.get("/version").json()
+    assert body["name"] == "AI Retail Analytics"
+    assert "version" in body
+
+
+def test_status_endpoint(client: TestClient) -> None:
+    body = client.get("/status").json()
+    assert body["database"] == "connected"
+    assert body["websocket_clients"] == 0
+    assert body["cameras"] == {}
