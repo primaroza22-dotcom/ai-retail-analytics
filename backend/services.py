@@ -12,9 +12,25 @@ import time
 from datetime import datetime, timezone
 
 from .exceptions import ConflictError, NotFoundError
-from .models import STATUS_COMPLETED, STATUS_ONGOING, Camera, DwellSession, Zone, ZoneEvent
+from .models import (
+    STATUS_COMPLETED,
+    STATUS_ONGOING,
+    Camera,
+    DwellSession,
+    Transaction,
+    TransactionItem,
+    Zone,
+    ZoneEvent,
+)
+from .pos import NormalizedTransaction, POSAdapter
 from .realtime import Event, EventBus, EventType
-from .repositories import CameraRepository, DwellRepository, EventRepository, ZoneRepository
+from .repositories import (
+    CameraRepository,
+    DwellRepository,
+    EventRepository,
+    TransactionRepository,
+    ZoneRepository,
+)
 from .schemas import (
     AnalyticsSummary,
     CameraCreate,
@@ -25,6 +41,12 @@ from .schemas import (
     DwellSessionCreate,
     DwellSessionRead,
     EventListResponse,
+    TransactionCreate,
+    TransactionDetailRead,
+    TransactionItemRead,
+    TransactionListResponse,
+    TransactionRead,
+    TransactionSummary,
     ZoneAnalytics,
     ZoneCreate,
     ZoneEventCreate,
@@ -389,3 +411,173 @@ class AnalyticsService:
             )
             for index, row in enumerate(ordered)
         ]
+
+
+class TransactionService:
+    """Ingests, lists, and aggregates vendor-neutral POS transactions."""
+
+    def __init__(self, transactions: TransactionRepository, bus: EventBus | None = None) -> None:
+        self._transactions = transactions
+        self._bus = bus
+
+    def _publish(self, event_type: EventType, transaction: Transaction) -> None:
+        if self._bus is None:
+            return
+        self._bus.publish(Event(event_type, time.time(), self._event_data(transaction)))
+
+    @staticmethod
+    def _event_data(transaction: Transaction) -> dict:
+        return {
+            "transaction_id": transaction.id,
+            "external_transaction_id": transaction.external_transaction_id,
+            "pos_source": transaction.pos_source,
+            "store_id": transaction.store_id,
+            "terminal_id": transaction.terminal_id,
+            "total": transaction.total,
+            "status": transaction.status,
+            "payment_method": transaction.payment_method,
+            "items_count": len(transaction.items),
+        }
+
+    def ingest(self, transactions: list[NormalizedTransaction]) -> list[TransactionRead]:
+        results: list[TransactionRead] = []
+        for normalized in transactions:
+            existing = self._transactions.get_by_external(
+                normalized.pos_source, normalized.external_transaction_id
+            )
+            if existing is not None:
+                results.append(TransactionRead.model_validate(existing))
+                continue
+            transaction = self._build(normalized)
+            self._transactions.add(transaction)
+            self._publish(EventType.TRANSACTION_CREATED, transaction)
+            results.append(TransactionRead.model_validate(transaction))
+        return results
+
+    def ingest_from_adapter(self, adapter: POSAdapter) -> list[TransactionRead]:
+        return self.ingest(adapter.fetch_transactions())
+
+    def ingest_schema(self, data: list[TransactionCreate]) -> list[TransactionRead]:
+        return self.ingest([item.to_normalized() for item in data])
+
+    @staticmethod
+    def _build(normalized: NormalizedTransaction) -> Transaction:
+        transaction = Transaction(
+            external_transaction_id=normalized.external_transaction_id,
+            pos_source=normalized.pos_source,
+            store_id=normalized.store_id,
+            terminal_id=normalized.terminal_id,
+            transaction_time=normalized.transaction_time,
+            subtotal=normalized.subtotal,
+            discount=normalized.discount,
+            tax=normalized.tax,
+            total=normalized.total,
+            currency=normalized.currency,
+            payment_method=normalized.payment_method,
+            status=normalized.status.value,
+        )
+        for item in normalized.items:
+            line_total = (
+                item.line_total
+                if item.line_total is not None
+                else item.quantity * item.unit_price - item.discount + item.tax
+            )
+            transaction.items.append(
+                TransactionItem(
+                    product_id=item.product_id,
+                    sku=item.sku,
+                    product_name=item.product_name,
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    discount=item.discount,
+                    tax=item.tax,
+                    line_total=line_total,
+                )
+            )
+        return transaction
+
+    def list_transactions(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        start_time: float | None,
+        end_time: float | None,
+        status: str | None,
+        pos_source: str | None,
+        payment_method: str | None,
+        terminal_id: str | None,
+    ) -> TransactionListResponse:
+        total = self._transactions.count(
+            start_time=start_time,
+            end_time=end_time,
+            status=status,
+            pos_source=pos_source,
+            payment_method=payment_method,
+            terminal_id=terminal_id,
+        )
+        items = [
+            TransactionRead.model_validate(tx)
+            for tx in self._transactions.list(
+                limit=limit,
+                offset=offset,
+                start_time=start_time,
+                end_time=end_time,
+                status=status,
+                pos_source=pos_source,
+                payment_method=payment_method,
+                terminal_id=terminal_id,
+            )
+        ]
+        return TransactionListResponse(items=items, total=total, limit=limit, offset=offset)
+
+    def get_transaction(self, transaction_id: int) -> TransactionDetailRead:
+        transaction = self._transactions.get(transaction_id)
+        if transaction is None:
+            raise NotFoundError(f"Unknown transaction: {transaction_id}")
+        return TransactionDetailRead(
+            **TransactionRead.model_validate(transaction).model_dump(),
+            items=[TransactionItemRead.model_validate(item) for item in transaction.items],
+        )
+
+    def get_items(self, transaction_id: int) -> list[TransactionItemRead]:
+        transaction = self._transactions.get(transaction_id)
+        if transaction is None:
+            raise NotFoundError(f"Unknown transaction: {transaction_id}")
+        return [
+            TransactionItemRead.model_validate(item)
+            for item in self._transactions.list_items(transaction_id)
+        ]
+
+    def update_status(self, transaction_id: int, new_status: str) -> TransactionRead:
+        transaction = self._transactions.get(transaction_id)
+        if transaction is None:
+            raise NotFoundError(f"Unknown transaction: {transaction_id}")
+        transaction.status = new_status
+        event_type = {
+            "cancelled": EventType.TRANSACTION_CANCELLED,
+            "refunded": EventType.TRANSACTION_REFUNDED,
+        }.get(new_status, EventType.TRANSACTION_UPDATED)
+        self._publish(event_type, transaction)
+        return TransactionRead.model_validate(transaction)
+
+    def summary(
+        self,
+        *,
+        start_time: float | None,
+        end_time: float | None,
+        status: str | None,
+        pos_source: str | None,
+        payment_method: str | None,
+        terminal_id: str | None,
+    ) -> TransactionSummary:
+        return TransactionSummary(
+            **self._transactions.summary(
+                start_time=start_time,
+                end_time=end_time,
+                status=status,
+                pos_source=pos_source,
+                payment_method=payment_method,
+                terminal_id=terminal_id,
+            )
+        )

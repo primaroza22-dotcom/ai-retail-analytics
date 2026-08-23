@@ -18,14 +18,14 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 11 — Multi-Camera Architecture** (current). The backend now has a
-camera registry, camera-scoped zones/events/dwell sessions (every event is
-traceable to its `camera_id`), an isolated per-camera worker pipeline with a
-deterministic test camera, camera lifecycle events, and WebSocket camera
-filtering. The dashboard supports camera selection and per-camera live analytics.
+**Sprint 12 — POS Integration Layer + Transaction Analytics** (current). The
+backend now has a vendor-neutral POS adapter interface, a transaction + line
+item model (with idempotent ingestion), transaction REST APIs and analytics,
+and POS events flowing through the existing WebSocket. The dashboard shows a
+live POS / Sales section.
 
-> POS, forecasting, production deployment, and advanced camera orchestration
-> are **NOT** implemented yet.
+> Forecasting, customer identity, loyalty, payment gateways, and ERP
+> integration are **NOT** implemented yet.
 
 ## 4. Architecture
 
@@ -567,3 +567,79 @@ unchanged.
 - `camera_reconnecting` is defined but not yet emitted (RTSP reconnect runs
   inside `CameraStream`).
 - Camera runtime status is in-memory (not persisted).
+
+## 21. POS Integration Layer (Sprint 12)
+
+A vendor-neutral POS integration layer ingests transactions, normalizes them,
+enforces idempotency, persists them, and publishes transaction events to the
+existing event bus / WebSocket.
+
+```
+POS → POS Adapter → Normalizer → Transaction Service
+                                     ├──→ PostgreSQL
+                                     └──→ EventBus → WebSocket → Dashboard
+```
+
+### POS adapter architecture
+
+- `backend/pos/adapter.py` — `POSAdapter` interface (`health_check`,
+  `fetch_transactions`).
+- `backend/pos/normalizer.py` — `TransactionNormalizer` validates raw external
+  data and derives line totals.
+- `backend/pos/test_adapter.py` — `TestPOSAdapter` (deterministic, no external
+  connection).
+
+Adapters are never coupled to FastAPI routes. Future adapters (REST, webhook,
+database, CSV, vendor SDK) implement `POSAdapter`.
+
+### Transaction model
+
+- `transactions`: `external_transaction_id`, `pos_source`, `store_id`,
+  `terminal_id`, `transaction_time`, `subtotal`, `discount`, `tax`, `total`,
+  `currency`, `payment_method`, `status`.
+- `transaction_items`: `product_id`, `sku`, `product_name`, `quantity`,
+  `unit_price`, `discount`, `tax`, `line_total` (nullable product/sku allowed).
+
+### Idempotency
+
+Ingestion is idempotent on `(pos_source, external_transaction_id)` (unique
+constraint). Receiving the same transaction twice never creates a duplicate.
+
+### Transaction statuses
+
+`pending`, `completed`, `cancelled`, `refunded`. Cancellation/refund update
+status only — historical records are never deleted.
+
+### API
+
+| Method | Path                            | Description                  |
+| ------ | ------------------------------- | ---------------------------- |
+| POST   | `/transactions/ingest`          | Ingest normalized transactions |
+| GET    | `/transactions`                 | List (filters + pagination)  |
+| GET    | `/transactions/summary`         | Aggregate analytics          |
+| GET    | `/transactions/{id}`            | Transaction + items          |
+| GET    | `/transactions/{id}/items`      | Line items                   |
+| PATCH  | `/transactions/{id}/status`     | Cancel/refund/update status  |
+
+Filters: `start_time`, `end_time`, `status`, `pos_source`, `payment_method`,
+`terminal_id`, `limit`, `offset`.
+
+### Analytics
+
+`GET /transactions/summary` returns transaction count, gross/discount/tax/net
+sales, average transaction value, items sold, and payment-method breakdown —
+all aggregated database-side.
+
+### Real-time events
+
+New event types: `transaction_created`, `transaction_updated`,
+`transaction_cancelled`, `transaction_refunded`. They flow through the existing
+`/ws/events` endpoint (no separate endpoint). POS events carry no `camera_id`.
+
+### Known limitations
+
+- No per-person transaction correlation (no identity matching / facial
+  recognition) — by design.
+- No refund-line modeling: refunds are represented as a status change on the
+  original transaction.
+- POS ingestion endpoint is internal/unauthenticated (documented; auth deferred).

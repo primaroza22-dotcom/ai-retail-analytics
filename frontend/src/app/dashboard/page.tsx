@@ -7,6 +7,7 @@ import { DataTable } from "@/components/dashboard/DataTable";
 import { DwellChart } from "@/components/dashboard/DwellChart";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { LivePanel } from "@/components/dashboard/LivePanel";
+import { SalesPanel } from "@/components/dashboard/SalesPanel";
 import { EmptyState, ErrorState, LoadingState } from "@/components/dashboard/StatusStates";
 import { api } from "@/services/api";
 import { formatDuration } from "@/services/format";
@@ -49,6 +50,8 @@ export default function DashboardPage() {
         <CameraPanel />
         <LivePanel />
       </div>
+
+      <SalesPanel />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard

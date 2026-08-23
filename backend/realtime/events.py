@@ -30,6 +30,10 @@ class EventType(str, Enum):
     CAMERA_DISCONNECTED = "camera_disconnected"
     CAMERA_ERROR = "camera_error"
     CAMERA_RECONNECTING = "camera_reconnecting"
+    TRANSACTION_CREATED = "transaction_created"
+    TRANSACTION_UPDATED = "transaction_updated"
+    TRANSACTION_CANCELLED = "transaction_cancelled"
+    TRANSACTION_REFUNDED = "transaction_refunded"
 
 
 @dataclass(frozen=True)

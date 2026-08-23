@@ -20,6 +20,12 @@ import type {
   EventQuery,
   HealthResponse,
   TimeRangeQuery,
+  Transaction,
+  TransactionIngest,
+  TransactionItem,
+  TransactionListResponse,
+  TransactionQuery,
+  TransactionSummary,
   Zone,
   ZoneAnalytics,
   ZoneCreate,
@@ -139,6 +145,20 @@ export const api = {
     metric: "average_dwell" | "total_dwell" = "average_dwell",
     query: TimeRangeQuery = {},
   ) => request<ZoneRanking[]>(`/analytics/zones/ranking${buildQuery({ metric, ...query })}`),
+
+  listTransactions: (query: TransactionQuery = {}) =>
+    request<TransactionListResponse>(`/transactions${buildQuery(query)}`),
+  getTransaction: (transactionId: number) =>
+    request<Transaction>(`/transactions/${transactionId}`),
+  getTransactionItems: (transactionId: number) =>
+    request<TransactionItem[]>(`/transactions/${transactionId}/items`),
+  getTransactionSummary: (query: TransactionQuery = {}) =>
+    request<TransactionSummary>(`/transactions/summary${buildQuery(query)}`),
+  ingestTransactions: (transactions: TransactionIngest[]) =>
+    request<Transaction[]>("/transactions/ingest", {
+      method: "POST",
+      body: JSON.stringify(transactions),
+    }),
 };
 
 /** Convert an unknown thrown value into a user-friendly message. */

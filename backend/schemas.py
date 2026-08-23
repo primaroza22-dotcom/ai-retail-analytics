@@ -10,6 +10,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .models import TRANSACTION_STATUSES
+from .pos.models import NormalizedItem, NormalizedTransaction, TransactionStatus
+
 SOURCE_TYPES = {"rtsp", "onvif", "file", "test"}
 
 
@@ -218,3 +221,139 @@ class CameraRead(BaseModel):
 class CameraStatusRead(BaseModel):
     camera_id: str
     status: str
+
+
+class TransactionItemCreate(BaseModel):
+    product_id: str | None = None
+    sku: str | None = None
+    product_name: str | None = None
+    quantity: float = Field(gt=0)
+    unit_price: float = Field(ge=0)
+    discount: float = Field(default=0, ge=0)
+    tax: float = Field(default=0, ge=0)
+    line_total: float | None = None
+
+
+class TransactionCreate(BaseModel):
+    external_transaction_id: str = Field(min_length=1)
+    pos_source: str = Field(min_length=1)
+    store_id: str | None = None
+    terminal_id: str | None = None
+    transaction_time: float
+    subtotal: float = Field(ge=0)
+    discount: float = Field(default=0, ge=0)
+    tax: float = Field(default=0, ge=0)
+    total: float = Field(ge=0)
+    currency: str = "USD"
+    payment_method: str | None = None
+    status: str = "completed"
+    items: list[TransactionItemCreate] = []
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str) -> str:
+        if value not in TRANSACTION_STATUSES:
+            raise ValueError(f"status must be one of {TRANSACTION_STATUSES}")
+        return value
+
+    def to_normalized(self) -> NormalizedTransaction:
+        return NormalizedTransaction(
+            external_transaction_id=self.external_transaction_id,
+            pos_source=self.pos_source,
+            store_id=self.store_id,
+            terminal_id=self.terminal_id,
+            transaction_time=self.transaction_time,
+            subtotal=self.subtotal,
+            discount=self.discount,
+            tax=self.tax,
+            total=self.total,
+            currency=self.currency,
+            payment_method=self.payment_method,
+            status=TransactionStatus(self.status),
+            items=[
+                NormalizedItem(
+                    product_id=item.product_id,
+                    sku=item.sku,
+                    product_name=item.product_name,
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    discount=item.discount,
+                    tax=item.tax,
+                    line_total=item.line_total,
+                )
+                for item in self.items
+            ],
+        )
+
+
+class TransactionItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: str | None
+    sku: str | None
+    product_name: str | None
+    quantity: float
+    unit_price: float
+    discount: float
+    tax: float
+    line_total: float
+
+
+class TransactionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    external_transaction_id: str
+    pos_source: str
+    store_id: str | None
+    terminal_id: str | None
+    transaction_time: float
+    subtotal: float
+    discount: float
+    tax: float
+    total: float
+    currency: str
+    payment_method: str | None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class TransactionDetailRead(TransactionRead):
+    items: list[TransactionItemRead]
+
+
+class TransactionListResponse(BaseModel):
+    items: list[TransactionRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class TransactionStatusUpdate(BaseModel):
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str) -> str:
+        if value not in TRANSACTION_STATUSES:
+            raise ValueError(f"status must be one of {TRANSACTION_STATUSES}")
+        return value
+
+
+class PaymentMethodBreakdown(BaseModel):
+    payment_method: str | None
+    count: int
+    total: float
+
+
+class TransactionSummary(BaseModel):
+    transaction_count: int
+    gross_sales: float
+    discount_total: float
+    tax_total: float
+    net_sales: float
+    average_transaction_value: float | None
+    items_sold: float
+    by_payment_method: list[PaymentMethodBreakdown]

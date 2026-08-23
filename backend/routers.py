@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisc
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from .deps import get_analytics_service, get_camera_service, get_zone_service
+from .deps import get_analytics_service, get_camera_service, get_transaction_service, get_zone_service
 from .realtime import Event, EventType
 from .schemas import (
     AnalyticsSummary,
@@ -27,6 +27,13 @@ from .schemas import (
     DwellSessionCreate,
     DwellSessionRead,
     EventListResponse,
+    TransactionCreate,
+    TransactionDetailRead,
+    TransactionItemRead,
+    TransactionListResponse,
+    TransactionRead,
+    TransactionStatusUpdate,
+    TransactionSummary,
     ZoneAnalytics,
     ZoneCreate,
     ZoneEventCreate,
@@ -35,7 +42,7 @@ from .schemas import (
     ZoneRead,
     ZoneUpdate,
 )
-from .services import AnalyticsService, CameraService, ZoneService
+from .services import AnalyticsService, CameraService, TransactionService, ZoneService
 
 router = APIRouter()
 
@@ -299,3 +306,101 @@ def daily_analytics(
     service: AnalyticsService = Depends(get_analytics_service),
 ) -> list[DailyAnalytics]:
     return service.daily(start_time, end_time, camera_id)
+
+
+# --- Transactions ---
+
+
+@router.post(
+    "/transactions/ingest",
+    response_model=list[TransactionRead],
+    status_code=status.HTTP_201_CREATED,
+    tags=["transactions"],
+)
+def ingest_transactions(
+    payload: list[TransactionCreate],
+    service: TransactionService = Depends(get_transaction_service),
+) -> list[TransactionRead]:
+    """Ingest normalized POS transactions (idempotent on pos_source + external id)."""
+    return service.ingest_schema(payload)
+
+
+@router.get("/transactions", response_model=TransactionListResponse, tags=["transactions"])
+def list_transactions(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    start_time: float | None = None,
+    end_time: float | None = None,
+    status: str | None = None,
+    pos_source: str | None = None,
+    payment_method: str | None = None,
+    terminal_id: str | None = None,
+    service: TransactionService = Depends(get_transaction_service),
+) -> TransactionListResponse:
+    return service.list_transactions(
+        limit=limit,
+        offset=offset,
+        start_time=start_time,
+        end_time=end_time,
+        status=status,
+        pos_source=pos_source,
+        payment_method=payment_method,
+        terminal_id=terminal_id,
+    )
+
+
+@router.get("/transactions/summary", response_model=TransactionSummary, tags=["transactions"])
+def transactions_summary(
+    start_time: float | None = None,
+    end_time: float | None = None,
+    status: str | None = None,
+    pos_source: str | None = None,
+    payment_method: str | None = None,
+    terminal_id: str | None = None,
+    service: TransactionService = Depends(get_transaction_service),
+) -> TransactionSummary:
+    return service.summary(
+        start_time=start_time,
+        end_time=end_time,
+        status=status,
+        pos_source=pos_source,
+        payment_method=payment_method,
+        terminal_id=terminal_id,
+    )
+
+
+@router.get(
+    "/transactions/{transaction_id}",
+    response_model=TransactionDetailRead,
+    tags=["transactions"],
+)
+def get_transaction(
+    transaction_id: int,
+    service: TransactionService = Depends(get_transaction_service),
+) -> TransactionDetailRead:
+    return service.get_transaction(transaction_id)
+
+
+@router.get(
+    "/transactions/{transaction_id}/items",
+    response_model=list[TransactionItemRead],
+    tags=["transactions"],
+)
+def get_transaction_items(
+    transaction_id: int,
+    service: TransactionService = Depends(get_transaction_service),
+) -> list[TransactionItemRead]:
+    return service.get_items(transaction_id)
+
+
+@router.patch(
+    "/transactions/{transaction_id}/status",
+    response_model=TransactionRead,
+    tags=["transactions"],
+)
+def update_transaction_status(
+    transaction_id: int,
+    payload: TransactionStatusUpdate,
+    service: TransactionService = Depends(get_transaction_service),
+) -> TransactionRead:
+    return service.update_status(transaction_id, payload.status)

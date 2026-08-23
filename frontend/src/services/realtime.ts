@@ -22,7 +22,11 @@ export type RealtimeEventType =
   | "camera_connected"
   | "camera_disconnected"
   | "camera_error"
-  | "camera_reconnecting";
+  | "camera_reconnecting"
+  | "transaction_created"
+  | "transaction_updated"
+  | "transaction_cancelled"
+  | "transaction_refunded";
 
 export interface RealtimeEvent {
   type: RealtimeEventType;

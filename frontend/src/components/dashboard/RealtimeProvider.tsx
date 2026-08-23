@@ -9,6 +9,7 @@ import {
 } from "@/services/realtime";
 
 const MAX_BUFFER = 100;
+const MAX_TRANSACTION_BUFFER = 50;
 
 export interface LiveCounters {
   activeTracks: number;
@@ -18,14 +19,28 @@ export interface LiveCounters {
   eventsReceived: number;
 }
 
+export interface SalesCounters {
+  transactions: number;
+  sales: number;
+  items: number;
+}
+
 interface RealtimeContextValue {
   status: ConnectionStatus;
   events: RealtimeEvent[];
   counters: LiveCounters;
+  transactions: RealtimeEvent[];
+  salesCounters: SalesCounters;
   selectCameras: (cameraIds: string[] | null) => void;
 }
 
 const CONTROL_TYPES = new Set(["connection", "heartbeat"]);
+const TRANSACTION_TYPES = new Set([
+  "transaction_created",
+  "transaction_updated",
+  "transaction_cancelled",
+  "transaction_refunded",
+]);
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
@@ -37,15 +52,35 @@ const EMPTY_COUNTERS: LiveCounters = {
   eventsReceived: 0,
 };
 
+const EMPTY_SALES: SalesCounters = { transactions: 0, sales: 0, items: 0 };
+
+function numberFrom(value: unknown): number {
+  return typeof value === "number" ? value : 0;
+}
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [events, setEvents] = useState<RealtimeEvent[]>([]);
   const [counters, setCounters] = useState<LiveCounters>(EMPTY_COUNTERS);
+  const [transactions, setTransactions] = useState<RealtimeEvent[]>([]);
+  const [salesCounters, setSalesCounters] = useState<SalesCounters>(EMPTY_SALES);
   const activeTracksRef = useRef<Set<unknown>>(new Set());
   const clientRef = useRef<RealtimeClient | null>(null);
 
   const handleEvent = useCallback((event: RealtimeEvent) => {
     if (CONTROL_TYPES.has(event.type)) return;
+
+    if (TRANSACTION_TYPES.has(event.type)) {
+      setTransactions((prev) => [event, ...prev].slice(0, MAX_TRANSACTION_BUFFER));
+      if (event.type === "transaction_created") {
+        setSalesCounters((prev) => ({
+          transactions: prev.transactions + 1,
+          sales: prev.sales + numberFrom(event.data.total),
+          items: prev.items + numberFrom(event.data.items_count),
+        }));
+      }
+      return;
+    }
 
     const trackId = event.data?.track_id;
     if (event.type === "zone_enter") {
@@ -98,7 +133,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     setCounters(EMPTY_COUNTERS);
   }, []);
 
-  const value: RealtimeContextValue = { status, events, counters, selectCameras };
+  const value: RealtimeContextValue = {
+    status,
+    events,
+    counters,
+    transactions,
+    salesCounters,
+    selectCameras,
+  };
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }
 

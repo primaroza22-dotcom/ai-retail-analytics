@@ -184,3 +184,95 @@ export interface TimeRangeQuery {
   end_time?: number;
   camera_id?: string;
 }
+
+export interface TransactionItem {
+  id: number;
+  product_id: string | null;
+  sku: string | null;
+  product_name: string | null;
+  quantity: number;
+  unit_price: number;
+  discount: number;
+  tax: number;
+  line_total: number;
+}
+
+export interface Transaction {
+  id: number;
+  external_transaction_id: string;
+  pos_source: string;
+  store_id: string | null;
+  terminal_id: string | null;
+  transaction_time: number;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  currency: string;
+  payment_method: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TransactionIngestItem {
+  product_id?: string | null;
+  sku?: string | null;
+  product_name?: string | null;
+  quantity: number;
+  unit_price: number;
+  discount?: number;
+  tax?: number;
+  line_total?: number | null;
+}
+
+export interface TransactionIngest {
+  external_transaction_id: string;
+  pos_source: string;
+  store_id?: string | null;
+  terminal_id?: string | null;
+  transaction_time: number;
+  subtotal: number;
+  discount?: number;
+  tax?: number;
+  total: number;
+  currency?: string;
+  payment_method?: string | null;
+  status?: string;
+  items?: TransactionIngestItem[];
+}
+
+export interface TransactionListResponse {
+  items: Transaction[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PaymentMethodBreakdown {
+  payment_method: string | null;
+  count: number;
+  total: number;
+}
+
+export interface TransactionSummary {
+  transaction_count: number;
+  gross_sales: number;
+  discount_total: number;
+  tax_total: number;
+  net_sales: number;
+  average_transaction_value: number | null;
+  items_sold: number;
+  by_payment_method: PaymentMethodBreakdown[];
+}
+
+export interface TransactionQuery {
+  limit?: number;
+  offset?: number;
+  start_time?: number;
+  end_time?: number;
+  status?: string;
+  pos_source?: string;
+  payment_method?: string;
+  terminal_id?: string;
+}
