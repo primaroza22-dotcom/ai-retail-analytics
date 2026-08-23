@@ -6,18 +6,26 @@ No business logic or database access lives here.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from typing import Literal
+
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import text
 
 from .deps import get_analytics_service, get_session, get_zone_service
 from .schemas import (
-    DwellAnalyticsResponse,
+    AnalyticsSummary,
+    DailyAnalytics,
+    DwellListResponse,
     DwellSessionCreate,
     DwellSessionRead,
+    EventListResponse,
+    ZoneAnalytics,
     ZoneCreate,
     ZoneEventCreate,
     ZoneEventRead,
+    ZoneRanking,
     ZoneRead,
+    ZoneUpdate,
 )
 from .services import AnalyticsService, ZoneService
 
@@ -28,6 +36,9 @@ router = APIRouter()
 def health(session=Depends(get_session)) -> dict:
     session.execute(text("SELECT 1"))
     return {"status": "ok"}
+
+
+# --- Zones ---
 
 
 @router.post(
@@ -45,6 +56,18 @@ def list_zones(zone_service=Depends(get_zone_service)) -> list[ZoneRead]:
     return zone_service.list()
 
 
+@router.put("/zones/{zone_id}", response_model=ZoneRead, tags=["zones"])
+def update_zone(
+    zone_id: str,
+    payload: ZoneUpdate,
+    zone_service=Depends(get_zone_service),
+) -> ZoneRead:
+    return zone_service.update(zone_id, payload)
+
+
+# --- Events ---
+
+
 @router.post(
     "/events",
     response_model=list[ZoneEventRead],
@@ -55,6 +78,31 @@ def record_events(
     payload: list[ZoneEventCreate], service: AnalyticsService = Depends(get_analytics_service)
 ) -> list[ZoneEventRead]:
     return service.record_events(payload)
+
+
+@router.get("/events", response_model=EventListResponse, tags=["analytics"])
+def list_events(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    zone_id: str | None = None,
+    event_type: str | None = None,
+    track_id: int | None = None,
+    start_time: float | None = None,
+    end_time: float | None = None,
+    service: AnalyticsService = Depends(get_analytics_service),
+) -> EventListResponse:
+    return service.list_events(
+        limit=limit,
+        offset=offset,
+        zone_id=zone_id,
+        event_type=event_type,
+        track_id=track_id,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+
+# --- Dwell sessions ---
 
 
 @router.post(
@@ -70,12 +118,73 @@ def record_dwell_sessions(
     return service.record_sessions(payload)
 
 
+# --- Analytics ---
+
+
+@router.get("/analytics/dwell", response_model=DwellListResponse, tags=["analytics"])
+def dwell_sessions(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    zone_id: str | None = None,
+    track_id: int | None = None,
+    status: Literal["ongoing", "completed"] | None = None,
+    start_time: float | None = None,
+    end_time: float | None = None,
+    min_duration: float | None = None,
+    max_duration: float | None = None,
+    now: float | None = None,
+    service: AnalyticsService = Depends(get_analytics_service),
+) -> DwellListResponse:
+    return service.list_dwell_sessions(
+        limit=limit,
+        offset=offset,
+        zone_id=zone_id,
+        track_id=track_id,
+        status=status,
+        start_time=start_time,
+        end_time=end_time,
+        min_duration=min_duration,
+        max_duration=max_duration,
+        now=now,
+    )
+
+
+@router.get("/analytics/summary", response_model=AnalyticsSummary, tags=["analytics"])
+def analytics_summary(
+    start_time: float | None = None,
+    end_time: float | None = None,
+    service: AnalyticsService = Depends(get_analytics_service),
+) -> AnalyticsSummary:
+    return service.summary(start_time, end_time)
+
+
+@router.get("/analytics/zones", response_model=list[ZoneAnalytics], tags=["analytics"])
+def zone_analytics(
+    start_time: float | None = None,
+    end_time: float | None = None,
+    service: AnalyticsService = Depends(get_analytics_service),
+) -> list[ZoneAnalytics]:
+    return service.zone_analytics(start_time, end_time)
+
+
 @router.get(
-    "/analytics/dwell",
-    response_model=DwellAnalyticsResponse,
+    "/analytics/zones/ranking",
+    response_model=list[ZoneRanking],
     tags=["analytics"],
 )
-def dwell_analytics(
+def zone_ranking(
+    metric: Literal["average_dwell", "total_dwell"] = "average_dwell",
+    start_time: float | None = None,
+    end_time: float | None = None,
     service: AnalyticsService = Depends(get_analytics_service),
-) -> DwellAnalyticsResponse:
-    return service.analytics()
+) -> list[ZoneRanking]:
+    return service.zone_ranking(metric, start_time, end_time)
+
+
+@router.get("/analytics/daily", response_model=list[DailyAnalytics], tags=["analytics"])
+def daily_analytics(
+    start_time: float | None = None,
+    end_time: float | None = None,
+    service: AnalyticsService = Depends(get_analytics_service),
+) -> list[DailyAnalytics]:
+    return service.daily(start_time, end_time)

@@ -75,17 +75,12 @@ def test_dwell_analytics_flow(client: TestClient) -> None:
     created = client.post("/dwell-sessions", json=sessions)
     assert created.status_code == 201
     assert [s["duration"] for s in created.json()] == [30.0, 40.0]
+    assert all(s["status"] == "completed" for s in created.json())
 
     analytics = client.get("/analytics/dwell").json()
-    assert len(analytics["sessions"]) == 2
-    assert analytics["summary"] == [
-        {
-            "zone_id": "counter",
-            "session_count": 2,
-            "total_duration": 70.0,
-            "average_duration": 35.0,
-        }
-    ]
+    assert analytics["total"] == 2
+    assert len(analytics["items"]) == 2
+    assert all(item["status"] == "completed" for item in analytics["items"])
 
 
 def test_dwell_exit_before_enter_rejected(client: TestClient) -> None:

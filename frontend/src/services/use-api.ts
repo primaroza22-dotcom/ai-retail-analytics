@@ -12,11 +12,12 @@ interface ApiState<T> {
 }
 
 /**
- * Fetch data from the backend on mount and whenever `refresh` is called.
- * The fetcher is stored in a ref so callers can pass an inline closure without
- * triggering repeated requests.
+ * Fetch data from the backend on mount, on manual `refresh`, and whenever
+ * `key` changes (used to react to filter/pagination changes). The fetcher is
+ * stored in a ref so callers can pass an inline closure without triggering
+ * repeated requests.
  */
-export function useApi<T>(fetcher: () => Promise<T>): ApiState<T> {
+export function useApi<T>(fetcher: () => Promise<T>, key?: string): ApiState<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,7 +56,7 @@ export function useApi<T>(fetcher: () => Promise<T>): ApiState<T> {
     return () => {
       cancelled = true;
     };
-  }, [tick]);
+  }, [tick, key]);
 
   return { data, error, loading, refresh };
 }

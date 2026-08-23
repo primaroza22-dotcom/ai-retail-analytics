@@ -1,6 +1,7 @@
 "use client";
 
 import { BackendStatus } from "@/components/dashboard/BackendStatus";
+import { DailyChart } from "@/components/dashboard/DailyChart";
 import { DataTable } from "@/components/dashboard/DataTable";
 import { DwellChart } from "@/components/dashboard/DwellChart";
 import { KpiCard } from "@/components/dashboard/KpiCard";
@@ -10,23 +11,17 @@ import { formatDuration } from "@/services/format";
 import { useApi } from "@/services/use-api";
 
 export default function DashboardPage() {
-  const zones = useApi(() => api.listZones());
-  const dwell = useApi(() => api.dwellAnalytics());
+  const summary = useApi(() => api.getAnalyticsSummary());
+  const zoneAnalytics = useApi(() => api.getZoneAnalytics());
+  const daily = useApi(() => api.getDailyAnalytics());
 
-  const loading = zones.loading || dwell.loading;
-  const error = zones.error ?? dwell.error;
-
-  const activeZones = (zones.data ?? []).filter((z) => z.enabled).length;
-  const sessions = dwell.data?.sessions ?? [];
-  const totalSessions = sessions.length;
-  const averageDwell =
-    totalSessions > 0
-      ? sessions.reduce((sum, s) => sum + s.duration, 0) / totalSessions
-      : 0;
+  const loading = summary.loading || zoneAnalytics.loading || daily.loading;
+  const error = summary.error ?? zoneAnalytics.error ?? daily.error;
 
   const refresh = () => {
-    zones.refresh();
-    dwell.refresh();
+    summary.refresh();
+    zoneAnalytics.refresh();
+    daily.refresh();
   };
 
   return (
@@ -48,68 +43,86 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Active Zones" value={loading ? "—" : String(activeZones)} />
-        <KpiCard label="Total Dwell Sessions" value={loading ? "—" : String(totalSessions)} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard
-          label="Average Dwell Time"
-          value={loading ? "—" : formatDuration(averageDwell)}
+          label="Total Sessions"
+          value={loading ? "—" : String(summary.data?.total_sessions ?? 0)}
         />
         <KpiCard
           label="Completed Sessions"
-          value={loading ? "—" : String(totalSessions)}
-          hint="Ongoing sessions are not yet exposed by the API"
+          value={loading ? "—" : String(summary.data?.completed_sessions ?? 0)}
+        />
+        <KpiCard
+          label="Ongoing Sessions"
+          value={loading ? "—" : String(summary.data?.ongoing_sessions ?? 0)}
+        />
+        <KpiCard
+          label="Average Dwell"
+          value={loading ? "—" : formatDuration(summary.data?.average_dwell_seconds)}
+        />
+        <KpiCard
+          label="Maximum Dwell"
+          value={loading ? "—" : formatDuration(summary.data?.max_dwell_seconds)}
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Dwell Time by Zone</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Average Dwell by Zone</h2>
           <div className="mt-4">
             {loading ? (
-              <LoadingState label="Loading dwell analytics..." />
+              <LoadingState label="Loading analytics..." />
             ) : error ? (
               <ErrorState message={error} onRetry={refresh} />
-            ) : (dwell.data?.summary.length ?? 0) === 0 ? (
-              <EmptyState message="No dwell sessions available." />
+            ) : (zoneAnalytics.data?.length ?? 0) === 0 ? (
+              <EmptyState message="No analytics data available." />
             ) : (
-              <DwellChart summary={dwell.data?.summary ?? []} />
+              <DwellChart zones={zoneAnalytics.data ?? []} />
             )}
           </div>
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Zone Summary</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Dwell Sessions by Day</h2>
           <div className="mt-4">
-            <DataTable
-              columns={[
-                { header: "ID", render: (z) => z.id },
-                { header: "Name", render: (z) => z.name },
-                {
-                  header: "Status",
-                  render: (z) =>
-                    z.enabled ? (
-                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                        Enabled
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
-                        Disabled
-                      </span>
-                    ),
-                },
-                { header: "Vertices", render: (z) => String(z.polygon.length) },
-              ]}
-              rows={zones.data ?? []}
-              loading={zones.loading}
-              error={zones.error}
-              emptyMessage="No zones configured."
-              onRetry={refresh}
-              rowKey={(z) => z.id}
-            />
+            {loading ? (
+              <LoadingState label="Loading analytics..." />
+            ) : error ? (
+              <ErrorState message={error} onRetry={refresh} />
+            ) : (daily.data?.length ?? 0) === 0 ? (
+              <EmptyState message="No analytics data available." />
+            ) : (
+              <DailyChart daily={daily.data ?? []} />
+            )}
           </div>
         </section>
       </div>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Zone Analytics</h2>
+        <div className="mt-4">
+          <DataTable
+            columns={[
+              { header: "Zone", render: (z) => <span className="font-medium">{z.zone_name}</span> },
+              { header: "Sessions", render: (z) => String(z.total_sessions) },
+              {
+                header: "Avg Dwell",
+                render: (z) => formatDuration(z.average_dwell_seconds),
+              },
+              {
+                header: "Total Dwell",
+                render: (z) => formatDuration(z.total_dwell_seconds),
+              },
+            ]}
+            rows={zoneAnalytics.data ?? []}
+            loading={zoneAnalytics.loading}
+            error={zoneAnalytics.error}
+            emptyMessage="No analytics data available."
+            onRetry={refresh}
+            rowKey={(z) => z.zone_id}
+          />
+        </div>
+      </section>
     </div>
   );
 }

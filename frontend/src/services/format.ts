@@ -5,8 +5,8 @@
  */
 
 /** Format a duration in seconds into a compact human-readable string. */
-export function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds)) {
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) {
     return "—";
   }
   if (seconds < 60) {

@@ -6,14 +6,23 @@
  */
 
 import type {
-  DwellAnalyticsResponse,
+  AnalyticsSummary,
+  DailyAnalytics,
+  DwellListResponse,
+  DwellQuery,
   DwellSession,
   DwellSessionCreate,
+  EventListResponse,
+  EventQuery,
   HealthResponse,
+  TimeRangeQuery,
   Zone,
+  ZoneAnalytics,
   ZoneCreate,
   ZoneEvent,
   ZoneEventCreate,
+  ZoneRanking,
+  ZoneUpdate,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -71,23 +80,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+function buildQuery(params: object): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      search.set(key, String(value));
+    }
+  }
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export const api = {
   health: () => request<HealthResponse>("/health"),
 
   listZones: () => request<Zone[]>("/zones"),
   createZone: (zone: ZoneCreate) =>
     request<Zone>("/zones", { method: "POST", body: JSON.stringify(zone) }),
+  updateZone: (zoneId: string, update: ZoneUpdate) =>
+    request<Zone>(`/zones/${zoneId}`, { method: "PUT", body: JSON.stringify(update) }),
 
   recordEvents: (events: ZoneEventCreate[]) =>
     request<ZoneEvent[]>("/events", { method: "POST", body: JSON.stringify(events) }),
+  getEvents: (query: EventQuery = {}) => request<EventListResponse>(`/events${buildQuery(query)}`),
 
   recordDwellSessions: (sessions: DwellSessionCreate[]) =>
     request<DwellSession[]>("/dwell-sessions", {
       method: "POST",
       body: JSON.stringify(sessions),
     }),
+  listDwellSessions: (query: DwellQuery = {}) =>
+    request<DwellListResponse>(`/analytics/dwell${buildQuery(query)}`),
 
-  dwellAnalytics: () => request<DwellAnalyticsResponse>("/analytics/dwell"),
+  getAnalyticsSummary: (query: TimeRangeQuery = {}) =>
+    request<AnalyticsSummary>(`/analytics/summary${buildQuery(query)}`),
+
+  getZoneAnalytics: (query: TimeRangeQuery = {}) =>
+    request<ZoneAnalytics[]>(`/analytics/zones${buildQuery(query)}`),
+
+  getDailyAnalytics: (query: TimeRangeQuery = {}) =>
+    request<DailyAnalytics[]>(`/analytics/daily${buildQuery(query)}`),
+
+  getZoneRanking: (
+    metric: "average_dwell" | "total_dwell" = "average_dwell",
+    query: TimeRangeQuery = {},
+  ) => request<ZoneRanking[]>(`/analytics/zones/ranking${buildQuery({ metric, ...query })}`),
 };
 
 /** Convert an unknown thrown value into a user-friendly message. */

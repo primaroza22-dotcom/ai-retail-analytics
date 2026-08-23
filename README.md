@@ -18,12 +18,13 @@ and more.
 
 ## 3. Current Development Stage
 
-**Sprint 7 — Next.js Dashboard** (current). The frontend (`frontend`) is a
-Next.js dashboard that consumes the FastAPI REST API. It only displays data and
-sends form input — it never touches PostgreSQL, SQL, or the AI/vision pipeline.
+**Sprint 8 — Advanced Retail Analytics** (current). The backend now exposes a
+complete analytics API (event listing, zone update/disable, ongoing vs
+completed dwell sessions, and aggregation endpoints: summary, per-zone, daily,
+and ranking). The dashboard consumes these endpoints for KPIs and charts.
 
-> Real-time (WebSocket), CCTV streaming, and live tracking visualization are
-> **NOT** implemented yet. They will be built in later sprints.
+> Real-time (WebSocket), CCTV streaming, live tracking visualization, POS, and
+> forecasting are **NOT** implemented yet.
 
 ## 4. Architecture
 
@@ -311,13 +312,12 @@ base URL is configured via `NEXT_PUBLIC_API_BASE_URL` (see `frontend/.env.exampl
 
 ### Notes
 
-- The backend exposes no `GET /events` endpoint yet, so the Events page shows a
-  read-only notice plus an admin form that uses `POST /events`. A read-only
-  event list is deferred to a future sprint.
-- Zone edit/delete are not yet supported by the API; the dashboard only creates
-  zones.
-- CORS in the backend (Sprint 6) allows `http://localhost:3000` by default and
-  is configurable via `CORS_ORIGINS`.
+- The Events page now lists events via `GET /events` (added in Sprint 8) and
+  keeps an admin form that uses `POST /events`.
+- Zone edit and enable/disable are supported via `PUT /zones/{id}` (Sprint 8).
+  Disabling preserves historical analytics; zones are not hard-deleted.
+- CORS in the backend allows `http://localhost:3000` by default and is
+  configurable via `CORS_ORIGINS`.
 
 ### Checks
 
@@ -325,3 +325,37 @@ base URL is configured via `NEXT_PUBLIC_API_BASE_URL` (see `frontend/.env.exampl
 npm run lint
 npm run build
 ```
+
+## 17. Advanced Retail Analytics (Sprint 8)
+
+Sprint 8 completes the analytics API and adds first-level retail analytics.
+Timestamps are Unix epoch seconds (UTC). Dwell sessions are either `ongoing`
+(`exit_time`/`duration` are null) or `completed`.
+
+### New/changed endpoints
+
+| Method | Path                        | Description                                   |
+| ------ | --------------------------- | --------------------------------------------- |
+| GET    | `/events`                   | Paginated event list (`limit`, `offset`) + filters (`zone_id`, `event_type`, `track_id`, `start_time`, `end_time`) |
+| PUT    | `/zones/{zone_id}`          | Update a zone's `name`, `polygon`, `enabled`  |
+| GET    | `/analytics/dwell`          | Dwell sessions (ongoing + completed) with filters (`zone_id`, `track_id`, `status`, `start_time`, `end_time`, `min_duration`, `max_duration`) |
+| GET    | `/analytics/summary`        | Totals + average/min/max dwell (time-range aware) |
+| GET    | `/analytics/zones`          | Per-zone analytics (sessions, avg/total/max dwell) |
+| GET    | `/analytics/daily`          | Daily dwell aggregation (UTC date)            |
+| GET    | `/analytics/zones/ranking`  | Zone ranking by `average_dwell` (default) or `total_dwell` |
+
+### Aggregation semantics
+
+- Duration aggregates (`average_dwell_seconds`, `total_dwell_seconds`,
+  `max_dwell_seconds`, `min_dwell_seconds`) are computed over **completed**
+  sessions only; ongoing sessions contribute to counts
+  (`ongoing_sessions`, `total_sessions`).
+- `average_dwell_seconds`/`max_dwell_seconds`/`min_dwell_seconds` are `null`
+  when no completed sessions exist (never `NaN`).
+- For an ongoing session, `GET /analytics/dwell` reports `duration` as
+  `now - enter_time` (a `now` query parameter is supported for deterministic
+  reads; defaults to server time).
+
+All aggregation runs database-side (SQLAlchemy `COUNT`/`AVG`/`SUM`/`MAX`/`MIN`);
+business rules (duration derivation, ranking, filtering) live in the backend
+service layer, never in the frontend.

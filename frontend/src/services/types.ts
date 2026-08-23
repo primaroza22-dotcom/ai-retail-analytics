@@ -5,8 +5,6 @@
  * database, YOLO, tracking, or analytics business logic.
  */
 
-export type Point = [number, number];
-
 export interface Zone {
   id: string;
   name: string;
@@ -22,6 +20,12 @@ export interface ZoneCreate {
   enabled: boolean;
 }
 
+export interface ZoneUpdate {
+  name?: string;
+  polygon?: number[][];
+  enabled?: boolean;
+}
+
 export type ZoneEventType = "enter" | "exit";
 
 export interface ZoneEvent {
@@ -30,6 +34,7 @@ export interface ZoneEvent {
   zone_id: string;
   event_type: string;
   timestamp: number;
+  created_at: string;
 }
 
 export interface ZoneEventCreate {
@@ -39,34 +44,101 @@ export interface ZoneEventCreate {
   timestamp: number;
 }
 
+export interface EventListResponse {
+  items: ZoneEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface DwellSession {
   id: number;
   track_id: number;
   zone_id: string;
   enter_time: number;
-  exit_time: number;
-  duration: number;
+  exit_time: number | null;
+  duration: number | null;
+  status: "ongoing" | "completed";
 }
 
 export interface DwellSessionCreate {
   track_id: number;
   zone_id: string;
   enter_time: number;
-  exit_time: number;
+  exit_time?: number;
 }
 
-export interface ZoneDwellSummary {
+export interface DwellListResponse {
+  items: DwellSession[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AnalyticsSummary {
+  total_sessions: number;
+  completed_sessions: number;
+  ongoing_sessions: number;
+  average_dwell_seconds: number | null;
+  max_dwell_seconds: number | null;
+  min_dwell_seconds: number | null;
+}
+
+export interface ZoneAnalytics {
   zone_id: string;
-  session_count: number;
-  total_duration: number;
-  average_duration: number;
+  zone_name: string;
+  total_sessions: number;
+  completed_sessions: number;
+  ongoing_sessions: number;
+  average_dwell_seconds: number | null;
+  total_dwell_seconds: number;
+  max_dwell_seconds: number | null;
 }
 
-export interface DwellAnalyticsResponse {
-  sessions: DwellSession[];
-  summary: ZoneDwellSummary[];
+export interface DailyAnalytics {
+  date: string;
+  sessions: number;
+  average_dwell_seconds: number | null;
+  total_dwell_seconds: number;
+}
+
+export interface ZoneRanking {
+  rank: number;
+  zone_id: string;
+  zone_name: string;
+  total_sessions: number;
+  average_dwell_seconds: number | null;
+  total_dwell_seconds: number;
 }
 
 export interface HealthResponse {
   status: string;
+}
+
+export interface EventQuery {
+  limit?: number;
+  offset?: number;
+  zone_id?: string;
+  event_type?: string;
+  track_id?: number;
+  start_time?: number;
+  end_time?: number;
+}
+
+export interface DwellQuery {
+  limit?: number;
+  offset?: number;
+  zone_id?: string;
+  track_id?: number;
+  status?: "ongoing" | "completed";
+  start_time?: number;
+  end_time?: number;
+  min_duration?: number;
+  max_duration?: number;
+  now?: number;
+}
+
+export interface TimeRangeQuery {
+  start_time?: number;
+  end_time?: number;
 }
