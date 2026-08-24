@@ -1,0 +1,15 @@
+# Root build context ignore (used by the backend image; the frontend has its own
+# .dockerignore in frontend/).
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.env
+.env.*
+data
+models
+recordings
+node_modules
+frontend
+tests

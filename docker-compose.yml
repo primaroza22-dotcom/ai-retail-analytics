@@ -24,7 +24,8 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-arap}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-arap}
       APP_ENV: production
